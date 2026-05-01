@@ -1,0 +1,21 @@
+config DEV_POWERMETER
+    bool "Horizon 功率计"
+    default n
+    select COM_CAN
+    help
+        Horizon 功率计
+
+config DEV_MOTOR_DJI
+    bool "大疆电机"
+    default n
+    select COM_CAN
+    help
+        大疆电机
+
+config DEV_MOTOR_DM
+    bool "达妙电机"
+    default n
+    select COM_CAN
+    help
+        达妙电机
+
