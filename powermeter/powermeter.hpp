@@ -30,9 +30,8 @@ public:
     float GetPower() const { return power; }
 
 private:
-
     uint16_t rx_id_;
-
+    
     float shunt_volt = 0.0f;
     float bus_volt = 0.0f;
     float current = 0.0f;

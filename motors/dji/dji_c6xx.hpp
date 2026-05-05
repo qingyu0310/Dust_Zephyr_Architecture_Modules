@@ -32,13 +32,11 @@ class DjiC6xx final
 {
 public:
     struct Config  {
-        uint16_t tx_id = 0x200;
-        uint16_t rx_id = 0x201;
+        uint16_t rx_id      = 0x201;
 
         float gearbox_ratio = 3591.f / 187.f;
         float enc_per_round = 8192;
-
-        float wheel_d = 0.1f;
+        float wheel_r       = 0.1f;
     };
 
     void Init(Config cfg) {
@@ -81,22 +79,21 @@ public:
     float GetNowTemperature() const { return now_temperature_; }
 
 private:
-    static constexpr float kcurrent_limit = 20.0f;
-    static constexpr float kcurrent_constant = 20.0f / 16384.0f;
-    static constexpr float ktorque_constant = 0.3;
-
+    static constexpr float kTorqueK      = 0.3;
+    static constexpr float kCurrentK     = 20.0f / 16384.0f;
+    
     Config cfg_{};
 
-    float now_angle_ = 0.0f;
-    float now_omega_ = 0.0f;
-    float now_current_ = 0.0f;
-    float now_torque_ = 0.0f;
-    float now_velocity_ = 0.0f;
-    float now_temperature_ = 0.0f;
-
-    uint32_t last_enc_ = 0;
-    int32_t total_enc_ = 0;
+    uint32_t last_enc_   = 0;
+    int32_t total_enc_   = 0;
     int32_t total_round_ = 0;
+
+    float now_angle_       = 0.0f;
+    float now_omega_       = 0.0f;
+    float now_current_     = 0.0f;
+    float now_torque_      = 0.0f;
+    float now_velocity_    = 0.0f;
+    float now_temperature_ = 0.0f;
 
     mutable atomic_t seq_ = 0;
 };

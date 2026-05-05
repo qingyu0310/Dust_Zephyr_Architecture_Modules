@@ -37,9 +37,9 @@ void DjiC6xx::CanCpltRxCallback(uint8_t* buffer)
     const int32_t total_enc = total_round_ * static_cast<int32_t>(cfg_.enc_per_round) + static_cast<int32_t>(enc);
     const float motor_angle = (static_cast<float>(total_enc) / static_cast<float>(cfg_.enc_per_round)) * k2pi;
     const float omega_motor = (static_cast<float>(omega_rpm) * k2pi) / 60.0f;
-    const float velocity    = (cfg_.wheel_d != 0.0f) ? (omega_motor / cfg_.gearbox_ratio) * cfg_.wheel_d / 2.0f : 0.0f;
-    const float current     = static_cast<float>(current_raw) * kcurrent_constant;
-    const float torque      = current * ktorque_constant;
+    const float velocity    = (cfg_.wheel_r != 0.0f) ? (omega_motor / cfg_.gearbox_ratio) * cfg_.wheel_r * 0.5f : 0.0f;
+    const float current     = static_cast<float>(current_raw) * kCurrentK;
+    const float torque      = current * kTorqueK;
     const float temp_float  = static_cast<float>(temp);
 
     /* seqlock 写锁：允许其他中断，线程读到冲突时会自旋重试 */

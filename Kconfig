@@ -19,3 +19,11 @@ config DEV_MOTOR_DM
     help
         达妙电机
 
+config DEV_REMOTE_DR16
+    bool "dr16遥控器"
+    default n
+    select COM_UART
+    select TPC_REMOTE_TO
+    help
+        dr16遥控器
+
