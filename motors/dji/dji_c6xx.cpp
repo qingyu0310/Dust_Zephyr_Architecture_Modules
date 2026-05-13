@@ -18,11 +18,11 @@ namespace {
 
 void DjiC6xx::CanCpltRxCallback(uint8_t* buffer)
 {
-    const uint8_t* data = buffer;
-    const uint16_t enc = (static_cast<uint16_t>(data[0]) << 8) | static_cast<uint16_t>(data[1]);
-    const int16_t omega_rpm = static_cast<int16_t>((static_cast<uint16_t>(data[2]) << 8) | static_cast<uint16_t>(data[3]));
-    const int16_t current_raw = static_cast<int16_t>((static_cast<uint16_t>(data[4]) << 8) | static_cast<uint16_t>(data[5]));
-    const uint8_t temp = data[6];
+    const uint8_t* data         = buffer;
+    const uint16_t enc          = (static_cast<uint16_t>(data[0]) << 8)                      | static_cast<uint16_t>(data[1]);
+    const int16_t  omega_rpm    = static_cast<int16_t>((static_cast<uint16_t>(data[2]) << 8) | static_cast<uint16_t>(data[3]));
+    const int16_t  current_raw  = static_cast<int16_t>((static_cast<uint16_t>(data[4]) << 8) | static_cast<uint16_t>(data[5]));
+    const uint8_t  temp         = data[6];
 
     if (last_enc_ != 0) {
         int32_t diff = static_cast<int32_t>(enc) - static_cast<int32_t>(last_enc_);
@@ -44,11 +44,11 @@ void DjiC6xx::CanCpltRxCallback(uint8_t* buffer)
 
     /* seqlock 写锁：允许其他中断，线程读到冲突时会自旋重试 */
     atomic_inc(&seq_);
-    now_angle_      = (cfg_.gearbox_ratio != 0.0f) ? (motor_angle / cfg_.gearbox_ratio) : motor_angle;
-    now_omega_      = (cfg_.gearbox_ratio != 0.0f) ? (omega_motor / cfg_.gearbox_ratio) : omega_motor;
-    now_velocity_   = velocity;
-    now_current_    = current;
-    now_torque_     = torque;
+    now_angle_       = (cfg_.gearbox_ratio != 0.0f) ? (motor_angle / cfg_.gearbox_ratio) : motor_angle;
+    now_omega_       = (cfg_.gearbox_ratio != 0.0f) ? (omega_motor / cfg_.gearbox_ratio) : omega_motor;
+    now_velocity_    = velocity;
+    now_current_     = current;
+    now_torque_      = torque;
     now_temperature_ = temp_float;
     atomic_inc(&seq_);
 }

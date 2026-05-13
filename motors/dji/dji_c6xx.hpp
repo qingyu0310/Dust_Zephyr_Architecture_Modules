@@ -79,14 +79,14 @@ public:
     float GetNowTemperature() const { return now_temperature_; }
 
 private:
-    static constexpr float kTorqueK      = 0.3;
-    static constexpr float kCurrentK     = 20.0f / 16384.0f;
+    static constexpr float kTorqueK  = 0.3f;            // 转矩常数 N·m/A（手册数据）
+    static constexpr float kCurrentK = 20.0f / 16384.0f; // 电流 AD 比例系数
     
-    Config cfg_{};
+    Config cfg_ {};
 
-    uint32_t last_enc_   = 0;
-    int32_t total_enc_   = 0;
-    int32_t total_round_ = 0;
+    uint32_t last_enc_     = 0;
+    int32_t total_enc_     = 0;
+    int32_t total_round_   = 0;
 
     float now_angle_       = 0.0f;
     float now_omega_       = 0.0f;

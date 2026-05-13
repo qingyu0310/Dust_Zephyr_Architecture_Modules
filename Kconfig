@@ -1,28 +1,32 @@
-config DEV_POWERMETER
+# modules/Kconfig — 硬件模块驱动
+# 提供电机（大疆/达妙）、功率计、遥控器等具体设备的驱动
+# 依赖 drivers/ 中的通信驱动（CAN/UART）和数据通道（topic/）
+# 头文件在 modules/ 下
+config MOD_DEV_POWERMETER
     bool "Horizon 功率计"
     default n
     select COM_CAN
     help
         Horizon 功率计
 
-config DEV_MOTOR_DJI
+config MOD_DEV_MOTOR_DJI
     bool "大疆电机"
     default n
     select COM_CAN
     help
         大疆电机
 
-config DEV_MOTOR_DM
+config MOD_DEV_MOTOR_DM
     bool "达妙电机"
     default n
     select COM_CAN
     help
         达妙电机
 
-config DEV_REMOTE
+config MOD_DEV_REMOTE
     bool "遥控器"
     default n
-    select COM_UART
+    select COM_UART_DMA
     select TPC_REMOTE_TO
     help
         遥控器
