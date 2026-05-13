@@ -34,16 +34,16 @@ public:
     struct Config  {
         uint16_t rx_id      = 0x201;
 
-        float gearbox_ratio = 3591.f / 187.f;
-        float enc_per_round = 8192;
-        float wheel_r       = 0.1f;
+        uint16_t enc_per_round = 8192;
+        float    gearbox_ratio = 3591.f / 187.f;
+        float    wheel_r       = 0.1f;
     };
 
     void Init(Config cfg) {
         cfg_ = cfg;
     };
 
-    void CanCpltRxCallback(uint8_t* rx_data);
+    void CanCpltRxCallback(uint8_t* buffer);
 
     /**
      * @brief 电机状态快照

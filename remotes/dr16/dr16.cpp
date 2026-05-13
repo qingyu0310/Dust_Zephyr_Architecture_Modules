@@ -37,7 +37,7 @@ struct OutputData
     Keyboard keyboard;
 };
 
-/*  将解析后的数据发布到 zbus 通道                                         */
+// 将解析后的数据发布到 zbus 通道
 inline static void publishOutputData(const OutputData& od, RemoteData& pub)
 {
     processChannel(pub, od);
@@ -77,7 +77,7 @@ inline static void publishOutputData(const OutputData& od, RemoteData& pub)
     zbus_chan_pub(&pub_remote_to, &pub, K_MSEC(1));
 }
 
-/*  解码 + 校验 → 返回 false 表示帧错位                                    */
+//  解码 + 校验 → 返回 false 表示帧错位
 bool dataprocess(uint8_t* buffer, uint8_t len, RemoteData& pub)
 {
     if (len < 15) return false;
@@ -87,7 +87,7 @@ bool dataprocess(uint8_t* buffer, uint8_t len, RemoteData& pub)
     uint16_t ch2 = ((buffer[2] >> 6) | (buffer[3] << 2)  | (buffer[4] << 10)) & 0x07FF;
     uint16_t ch3 = ((buffer[4] >> 1) | (buffer[5] << 7)) & 0x07FF;
 
-    /*  校验：摇杆通道超出 通道值 范围 → 拼帧错位                          */
+    // 校验：摇杆通道超出范围 → 拼帧错位
 
     if (ch0 < 364 || ch0 > 1684 || ch1 < 364 || ch1 > 1684 || ch2 < 364 || ch2 > 1684 || ch3 < 364 || ch3 > 1684) {
         return false;

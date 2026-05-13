@@ -22,7 +22,7 @@ struct OutputData
     Keyboard keyboard;
 };
 
-/*  将解析后的数据发布到 zbus 通道                                         */
+// 将解析后的数据发布到 zbus 通道
 inline static void publishOutputData(const OutputData& od, RemoteData& pub)
 {
     pub.chassisy = od.keyboard.w() ? 1.0f : od.keyboard.s() ? -1.0f : 0.0f;
@@ -45,10 +45,21 @@ inline static void publishOutputData(const OutputData& od, RemoteData& pub)
     zbus_chan_pub(&pub_remote_to, &pub, K_MSEC(1));
 }
 
-/*  解码原始遥控器数据 → 返回 false 表示帧错位                             */
+// 解码原始遥控器数据 → 返回 false 表示帧错位
 bool dataprocess(uint8_t* buffer, uint8_t len, RemoteData& pub)
 {
     if (len < 16) return false;
+
+    //  协议头（6 字节）
+    uint8_t  start_of_frame = buffer[0];
+    // 裁判系统通用数据，未用上
+    // uint16_t data_length    = (uint16_t)buffer[1] | ((uint16_t)buffer[2] << 8);  
+    // uint8_t  seq            = buffer[3];
+    // uint8_t  crc8           = buffer[4];
+    // uint8_t  cmd_id         = buffer[5];
+
+    // 校验：帧头
+    if (start_of_frame != 0xA5) return false;
 
     static KeyboardState keyboard_state_{};
 
@@ -76,3 +87,12 @@ bool dataprocess(uint8_t* buffer, uint8_t len, RemoteData& pub)
 }
 
 }
+
+
+
+
+
+
+
+
+

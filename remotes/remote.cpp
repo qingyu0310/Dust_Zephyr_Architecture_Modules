@@ -23,7 +23,6 @@
  */
 
 #include "remote.hpp"
-#include "remote_to.hpp"
 #include "thread.hpp"
 #include "uart.hpp"
 
@@ -64,7 +63,8 @@ private:
 
     RemoteType type_ = RemoteType::None;
 
-    uint8_t  frame_buf_[64]{};
+    static constexpr uint16_t kFrameBufSize = 64;
+    uint8_t  frame_buf_[kFrameBufSize]{};
     uint16_t frame_pos_ = 0;
     k_sem    rx_sem_;
 
@@ -87,7 +87,7 @@ private:
                 uint16_t n = uart_->Read(tmp, sizeof(tmp));
                 if (n == 0) continue;
 
-                uint16_t cap = sizeof(frame_buf_) - frame_pos_;
+                uint16_t cap = kFrameBufSize - frame_pos_;
                 if (n > cap) n = cap;
                 memcpy(frame_buf_ + frame_pos_, tmp, n);
                 frame_pos_ += n;
@@ -111,6 +111,7 @@ private:
             } else {
                 // 当信号量超时，代表remote掉线
                 ClearPubData();
+                frame_pos_ = 0;
             }
         }
     }

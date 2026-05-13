@@ -3,7 +3,7 @@
 #include <cstdint>
 #include "remote_to.hpp"
 
-/*  共用类型 — 各协议解析的内部数据结构                                    */
+// 共用类型 — 各协议解析的内部数据结构
 struct Mouse
 {
     float x = 0.0f, y = 0.0f, z = 0.0f;
@@ -48,7 +48,7 @@ struct KeyboardState
     }
 };
 
-/*  归一化函数                                                              */
+// 归一化函数
 inline float normChannel(int16_t v, int16_t center, int16_t max)
 {
     float maxDist = max - center;

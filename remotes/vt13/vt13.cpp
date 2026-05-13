@@ -66,7 +66,7 @@ struct OutputData
     Keyboard keyboard;
 };
 
-/*  将解析后的数据发布到 zbus 通道                                         */
+// 将解析后的数据发布到 zbus 通道
 inline static void publishOutputData(const OutputData& od, RemoteData& pub)
 {
     processChannel(pub, od);
@@ -95,12 +95,12 @@ inline static void publishOutputData(const OutputData& od, RemoteData& pub)
     zbus_chan_pub(&pub_remote_to, &pub, K_MSEC(1));
 }
 
-/*  解码 + 校验 → 返回 false 表示帧错位                                    */
+// 解码 + 校验 → 返回 false 表示帧错位
 bool dataprocess(uint8_t* buffer, uint8_t len, RemoteData& pub)
 {
     if (len < 21) return false;
 
-    /*  校验：帧头必须为 0xA9 0x53                                         */
+    // 校验：帧头必须为 0xA9 0x53
     if (buffer[0] != 0xA9 || buffer[1] != 0x53) {
         return false;
     }
