@@ -76,7 +76,7 @@ void DmMotor::CanCpltRxCallback(uint8_t* buffer)
     const uint8_t* data  =  buffer;
 
     const uint8_t  id    =  data[0] & 0x0F;
-    if (id != cfg_.master_id) return;
+    if (id != cfg_.can_id) return;
 
     const uint8_t  err   =   data[0] >> 4;
     const uint16_t enc   = (static_cast<uint16_t>(data[1]) << 8) | data[2];
