@@ -67,7 +67,7 @@ struct OutputData
 };
 
 // 将解析后的数据发布到 zbus 通道
-inline static void publishOutputData(const OutputData& od, RemoteData& pub)
+inline static void publishOutputData(const OutputData& od, Message& pub)
 {
     processChannel(pub, od);
 
@@ -96,7 +96,7 @@ inline static void publishOutputData(const OutputData& od, RemoteData& pub)
 }
 
 // 解码 + 校验 → 返回 false 表示帧错位
-bool dataprocess(uint8_t* buffer, uint8_t len, RemoteData& pub)
+bool dataprocess(uint8_t* buffer, uint8_t len, Message& pub)
 {
     if (len < 21) return false;
 

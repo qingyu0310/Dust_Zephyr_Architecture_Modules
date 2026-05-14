@@ -70,17 +70,16 @@ public:
         return snap;
     }
 
-    /* 32-bit RISC-V 上 aligned float load/store 是原子的，单字段不需 seqlock */
-    float GetNowAngle()       const { return now_angle_; }
-    float GetNowOmega()       const { return now_omega_; }
-    float GetNowCurrent()     const { return now_current_; }
-    float GetNowTorque()      const { return now_torque_; }
-    float GetNowVelocity()    const { return now_velocity_; }
-    float GetNowTemperature() const { return now_temperature_; }
+    float GetNowAngle()       const { return now_angle_;        }
+    float GetNowOmega()       const { return now_omega_;        }
+    float GetNowCurrent()     const { return now_current_;      }
+    float GetNowTorque()      const { return now_torque_;       }
+    float GetNowVelocity()    const { return now_velocity_;     }
+    float GetNowTemperature() const { return now_temperature_;  }
 
 private:
-    static constexpr float kTorqueK  = 0.3f;            // 转矩常数 N·m/A（手册数据）
-    static constexpr float kCurrentK = 20.0f / 16384.0f; // 电流 AD 比例系数
+    static constexpr float kTorqueK  = 0.3f;                    // 转矩常数 N·m/A（手册数据）
+    static constexpr float kCurrentK = 20.0f / 16384.0f;        // 电流 AD 比例系数（手册数据）
     
     Config cfg_ {};
 

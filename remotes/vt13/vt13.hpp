@@ -17,6 +17,6 @@
 namespace vt13 {
 
 static constexpr uint16_t kFrameSizeVT13 = 21;
-bool dataprocess(uint8_t* buffer, uint8_t len, topic::remote_to::RemoteData& pub);
+bool dataprocess(uint8_t* buffer, uint8_t len, topic::remote_to::Message& pub);
 
 }

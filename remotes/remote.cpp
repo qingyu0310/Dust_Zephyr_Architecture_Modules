@@ -37,7 +37,7 @@ namespace thread::remote {
 class Remote final
 {
 public:
-    using DataProcessFunc = bool(*)(uint8_t* buffer, uint8_t len, RemoteData& pub);
+    using DataProcessFunc = bool(*)(uint8_t* buffer, uint8_t len, Message& pub);
 
     struct Protocol {
         DataProcessFunc func;
@@ -68,7 +68,7 @@ private:
     uint16_t frame_pos_ = 0;
     k_sem    rx_sem_;
 
-    RemoteData pub_  {};
+    Message pub_  {};
     Protocol proto_  { nullptr, 0 };
 
     void GetProcessFunc();
@@ -112,6 +112,7 @@ private:
                 // 当信号量超时，代表remote掉线
                 ClearPubData();
                 frame_pos_ = 0;
+                zbus_chan_pub(&pub_remote_to, &pub_, K_MSEC(1));
             }
         }
     }

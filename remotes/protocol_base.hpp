@@ -1,3 +1,14 @@
+/**
+ * @file protocol_base.hpp
+ * @author qingyu
+ * @brief 
+ * @version 0.1
+ * @date 2026-05-12
+ * 
+ * @copyright Copyright (c) 2026
+ * 
+ */
+
 #pragma once
 
 #include <cstdint>
@@ -68,7 +79,7 @@ inline float normMouse(float v, float scale)
 }
 
 template<typename OutData>
-inline void processChannel(topic::remote_to::RemoteData& pub, OutData od)
+inline void processChannel(topic::remote_to::Message& pub, OutData od)
 {
     pub.chassisy = od.keyboard.w() ? 1.0f : od.keyboard.s() ? -1.0f : od.ch.chassisy;
     pub.chassisx = od.keyboard.a() ? 1.0f : od.keyboard.d() ? -1.0f : od.ch.chassisx;

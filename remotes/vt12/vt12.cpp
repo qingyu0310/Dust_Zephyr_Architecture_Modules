@@ -23,7 +23,7 @@ struct OutputData
 };
 
 // 将解析后的数据发布到 zbus 通道
-inline static void publishOutputData(const OutputData& od, RemoteData& pub)
+inline static void publishOutputData(const OutputData& od, Message& pub)
 {
     pub.chassisy = od.keyboard.w() ? 1.0f : od.keyboard.s() ? -1.0f : 0.0f;
     pub.chassisx = od.keyboard.a() ? 1.0f : od.keyboard.d() ? -1.0f : 0.0f;
@@ -46,7 +46,7 @@ inline static void publishOutputData(const OutputData& od, RemoteData& pub)
 }
 
 // 解码原始遥控器数据 → 返回 false 表示帧错位
-bool dataprocess(uint8_t* buffer, uint8_t len, RemoteData& pub)
+bool dataprocess(uint8_t* buffer, uint8_t len, Message& pub)
 {
     if (len < 16) return false;
 

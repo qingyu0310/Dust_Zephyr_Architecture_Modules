@@ -17,8 +17,8 @@
 class PowerMeter
 {
 public:
-    PowerMeter() = default;
 
+    PowerMeter() = default;
     PowerMeter(uint16_t rx_id) : rx_id_(rx_id) {}
 
     void Init(uint16_t rx_id) {

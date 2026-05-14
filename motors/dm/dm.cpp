@@ -35,7 +35,7 @@ float uint_to_float(int x_int, float x_min, float x_max, int bits)
  *
  * @param cfg 电机配置参数
  */
-void Dm::Init(Config cfg)
+void DmMotor::Init(Config cfg)
 {
     cfg_ = cfg;
 
@@ -60,7 +60,7 @@ void Dm::Init(Config cfg)
  * @brief 定时掉线检测
  *
  */
-void Dm::PwrLossCheck()
+void DmMotor::PwrLossCheck()
 {
     power_lost_ = (flag_ == pre_flag_);
     pre_flag_ = flag_;
@@ -71,17 +71,17 @@ void Dm::PwrLossCheck()
  *
  * @param buffer CAN 数据帧 8 字节
  */
-void Dm::CanCpltRxCallback(uint8_t* buffer)
+void DmMotor::CanCpltRxCallback(uint8_t* buffer)
 {
     const uint8_t* data  =  buffer;
 
     const uint8_t  id    =  data[0] & 0x0F;
     if (id != cfg_.master_id) return;
 
-    const uint8_t  err   =  data[0] >> 4;
+    const uint8_t  err   =   data[0] >> 4;
     const uint16_t enc   = (static_cast<uint16_t>(data[1]) << 8) | data[2];
-    const int32_t  v_int = (data[3] << 4) | (data[4] >> 4);
-    const int32_t  t_int = ((data[4] & 0x0F) << 8) | data[5];
+    const int32_t  v_int = ( data[3] << 4)         | (data[4] >> 4);
+    const int32_t  t_int = ((data[4] & 0x0F) << 8) |  data[5];
 
     // 多圈角度追踪
     int32_t delta = static_cast<int32_t>(enc) - static_cast<int32_t>(pre_encoder_);
@@ -95,13 +95,14 @@ void Dm::CanCpltRxCallback(uint8_t* buffer)
 
     /* seqlock 写锁：允许其他中断，线程读到冲突时会自旋重试 */
     atomic_inc(&seq_);
-    now_rad_ = static_cast<float>(total_encoder_) / static_cast<float>((1 << 16) - 1)
-             * cfg_.pos_max * 2.0f;                     // 缩放到 [-pos_max, +pos_max]
-    now_ang_ = now_rad_ * kRad2Deg;                     // rad → °
+    now_rad_   = static_cast<float>(total_encoder_) / static_cast<float>((1 << 16) - 1)
+               * cfg_.pos_max * 2.0f;                   // 缩放到 [-pos_max, +pos_max]
+    now_ang_   = now_rad_ * kRad2Deg;                   // rad → °
 
-    const float omega_motor   = uint_to_float(v_int, -cfg_.vel_max, cfg_.vel_max, 12);
-    const float omega_out     = (cfg_.gearbox_ratio != 0.0f) ? omega_motor / cfg_.gearbox_ratio : omega_motor;
-    now_vel_ = (cfg_.wheel_r != 0.0f) ? omega_out * cfg_.wheel_r * 0.5f : 0.0f;     // v = ω_out * r / 2  —— 差速单轮贡献
+    const float omega_motor = uint_to_float(v_int, -cfg_.vel_max, cfg_.vel_max, 12);
+    now_omg_   = omega_motor;                           // 电机轴角速度 (rad/s)
+    const float omega_out   = (cfg_.gearbox_ratio != 0.0f) ? omega_motor / cfg_.gearbox_ratio : omega_motor;
+    now_vel_   = (cfg_.wheel_r != 0.0f) ? omega_out * cfg_.wheel_r * 0.5f : 0.0f;     // v = ω_out * r / 2  —— 差速单轮贡献
 
     now_tor_   = uint_to_float(t_int, -cfg_.tor_max, cfg_.tor_max, 12);
     now_tmos_  = static_cast<float>(data[6]);
@@ -120,7 +121,7 @@ void Dm::CanCpltRxCallback(uint8_t* buffer)
  *
  * @param data 输出 8 字节 CAN 数据
  */
-void Dm::CtrlData(uint8_t (&data)[8])
+void DmMotor::CtrlData(uint8_t (&data)[8])
 {
     switch (cfg_.ctrl_met)
     {
@@ -131,7 +132,7 @@ void Dm::CtrlData(uint8_t (&data)[8])
             constexpr float kKdMin = 0.0f, kKdMax = 5.0f;
 
             const uint16_t pos_tmp = float_to_uint(ctrl.target_rad_, -cfg_.pos_max, cfg_.pos_max, 16);
-            const uint16_t vel_tmp = float_to_uint(ctrl.target_omega_, -cfg_.vel_max, cfg_.vel_max, 12);
+            const uint16_t vel_tmp = float_to_uint(ctrl.target_omg_, -cfg_.vel_max, cfg_.vel_max, 12);
             const uint16_t kp_tmp  = float_to_uint(cfg_.kp,          kKpMin,        kKpMax,       12);
             const uint16_t kd_tmp  = float_to_uint(cfg_.kd,          kKdMin,        kKdMax,       12);
             const uint16_t tor_tmp = float_to_uint(ctrl.target_tor_, -cfg_.tor_max, cfg_.tor_max, 12);
@@ -150,7 +151,7 @@ void Dm::CtrlData(uint8_t (&data)[8])
         case ControlMethon::Pos:
         {
             const uint8_t* pos_bytes = reinterpret_cast<const uint8_t*>(&ctrl.target_rad_);
-            const uint8_t* vel_bytes = reinterpret_cast<const uint8_t*>(&ctrl.target_omega_);
+            const uint8_t* vel_bytes = reinterpret_cast<const uint8_t*>(&ctrl.target_omg_);
 
             data[0] = pos_bytes[0];
             data[1] = pos_bytes[1];
@@ -165,7 +166,7 @@ void Dm::CtrlData(uint8_t (&data)[8])
         }
         case ControlMethon::Spd:
         {
-            const uint8_t* vel_bytes = reinterpret_cast<const uint8_t*>(&ctrl.target_omega_);
+            const uint8_t* vel_bytes = reinterpret_cast<const uint8_t*>(&ctrl.target_omg_);
 
             data[0] = vel_bytes[0];
             data[1] = vel_bytes[1];
@@ -181,7 +182,7 @@ void Dm::CtrlData(uint8_t (&data)[8])
         case ControlMethon::Psi:
         {
             const uint8_t* pos_bytes = reinterpret_cast<const uint8_t*>(&ctrl.target_rad_);
-            uint16_t u16_vel = static_cast<uint16_t> (ctrl.target_omega_  * 100);                             // 100 为协议固定系数
+            uint16_t u16_vel = static_cast<uint16_t> (ctrl.target_omg_  * 100);                             // 100 为协议固定系数 vel单位为(rad/s)
             uint16_t u16_cur = static_cast<uint16_t>((ctrl.target_tor_ / cfg_.tor_max) * 10000.0f);           // 转矩→标幺值×10000
 
             data[0] = pos_bytes[0];
@@ -203,7 +204,7 @@ void Dm::CtrlData(uint8_t (&data)[8])
  *
  * @param data 输出 8 字节 CAN 数据
  */
-void Dm::EnableData(uint8_t (&data)[8])
+void DmMotor::EnableData(uint8_t (&data)[8])
 {
     data[0] = 0xFF;
     data[1] = 0xFF;
@@ -220,7 +221,7 @@ void Dm::EnableData(uint8_t (&data)[8])
  *
  * @param data 输出 8 字节 CAN 数据
  */
-void Dm::DisableData(uint8_t (&data)[8])
+void DmMotor::DisableData(uint8_t (&data)[8])
 {
     data[0] = 0xFF;
     data[1] = 0xFF;
@@ -237,7 +238,7 @@ void Dm::DisableData(uint8_t (&data)[8])
  *
  * @param data 输出 8 字节 CAN 数据
  */
-void Dm::SaveZeroData(uint8_t (&data)[8])
+void DmMotor::SaveZeroData(uint8_t (&data)[8])
 {
     data[0] = 0xFF;
     data[1] = 0xFF;
@@ -254,7 +255,7 @@ void Dm::SaveZeroData(uint8_t (&data)[8])
  *
  * @param data 输出 8 字节 CAN 数据
  */
-void Dm::ClearErrData(uint8_t (&data)[8])
+void DmMotor::ClearErrData(uint8_t (&data)[8])
 {
     data[0] = 0xFF;
     data[1] = 0xFF;
