@@ -58,7 +58,7 @@ public:
 
 private:
 
-    Thread<> thread_ {};
+    Thread<1024 * 8> thread_ {};
     RxStream* uart_ = nullptr;
 
     RemoteType type_ = RemoteType::None;
@@ -110,8 +110,8 @@ private:
                 }
             } else {
                 // 当信号量超时，代表remote掉线
-                ClearPubData();
                 frame_pos_ = 0;
+                ClearPubData();
                 zbus_chan_pub(&pub_remote_to, &pub_, K_MSEC(1));
             }
         }
