@@ -39,6 +39,8 @@
 #include "dm.hpp"
 #include <cstdint>
 
+#pragma message "Compiling Modules/Motors DM"
+
 namespace {
 
 int float_to_uint(float x_float, float x_min, float x_max, int bits)

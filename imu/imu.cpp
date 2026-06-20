@@ -7,6 +7,11 @@
  */
 
 #include "imu.hpp"
+#include <string.h>
+#include <zephyr/kernel.h>
+#include <zephyr/devicetree.h>
+#include <zephyr/drivers/pwm.h>
+#include <zephyr/logging/log.h>
 
 #ifdef CONFIG_MOD_DEV_IMU_BMI088
 #include "bmi088/bmi088.hpp"
@@ -15,11 +20,7 @@
 #include "icm42688p/icm42688p.hpp"
 #endif
 
-#include <string.h>
-#include <zephyr/kernel.h>
-#include <zephyr/devicetree.h>
-#include <zephyr/drivers/pwm.h>
-#include <zephyr/logging/log.h>
+#pragma message "Compiling Modules/Imu"
 
 LOG_MODULE_REGISTER(imu, LOG_LEVEL_INF);
 
@@ -54,8 +55,7 @@ using RegisterFromDevicetreeFn = bool (*)(uint32_t period_ms);
 
 bool RegisterSourceFromDevicetree(RegisterFromDevicetreeFn register_fn)
 {
-    if (register_fn == nullptr ||
-        !register_fn(kDefaultImuPeriodMs)) {
+    if (register_fn == nullptr || !register_fn(kDefaultImuPeriodMs)) {
         return false;
     }
 
@@ -65,115 +65,40 @@ bool RegisterSourceFromDevicetree(RegisterFromDevicetreeFn register_fn)
 } // namespace
 
 /**
- * @brief attitude
- *
- */
-namespace attitude {
-
-/**
- * @brief 初始化姿态解算器
- */
-void Processor::Init()
-{
-    constexpr float kDefaultAccelLpfTimeConstant = 0.02f;
-    alg::attitude::QuaternionEkf::Config cfg {};
-    cfg.accel_lpf_coefficient = kDefaultAccelLpfTimeConstant;
-    ekf_.Init(cfg);
-}
-
-/**
- * @brief 处理一帧 IMU 工程量样本并整理发布消息
- *
- * @param sample 当前 IMU 工程量样本
- * @param pub    输出到项目内部 topic 的发布消息
- */
-void Processor::Process(const Sample& sample, topic::imu_to::Message& pub)
-{
-    ekf_.Update(sample);
-
-    const auto& state = ekf_.GetState();
-
-    memcpy(pub.quaternion, state.q,    sizeof(pub.quaternion));
-    memcpy(pub.gyro,       state.Gyro, sizeof(pub.gyro));
-
-    pub.roll        = state.Roll;
-    pub.pitch       = state.Pitch;
-    pub.yaw         = state.Yaw;
-    pub.yaw_total   = state.YawTotalAngle;
-    pub.temperature = sample.temperature;
-}
-
-} // namespace attitude
-
-/**
- * @brief heater
- *
- */
-namespace heater {
-
-/**
- * @brief 初始化 IMU 加热器
- *
- * 目标温度和 PID 参数当前使用类内默认值，后续需要开放时再从上层传入。
- *
- * @return 初始化是否成功
- */
-bool Heater::Init()
-{
-    static const pwm_dt_spec heater_pwm = PWM_DT_SPEC_GET(DT_ALIAS(imu_pwm));
-
-    if (!heater_pwm_.init(heater_pwm)) {
-        return false;
-    }
-
-    pid_.Init(kDefaultPidConfig);
-
-    duty_ = 0.0f;
-    initialized_ = true;
-    return heater_pwm_.SetDuty(duty_);
-}
-
-/**
- * @brief 根据当前温度更新加热占空比
- *
- * @param temperature 当前 IMU 温度，单位摄氏度
- */
-void Heater::Update(float temperature)
-{
-    if (!initialized_) {
-        return;
-    }
-
-    duty_ = pid_.Calc(target_temperature_, temperature);
-    if (duty_ < 1.f - kMaxDuty) {
-        duty_ = 1.f - kMaxDuty;
-    }
-    if (duty_ > kMaxDuty) {
-        duty_ = kMaxDuty;
-    }
-    (void)heater_pwm_.SetDuty(duty_);
-}
-
-/**
- * @brief 判断当前温度是否已经稳定在目标温度附近
- *
- * @param temperature 当前 IMU 温度
- * @param tolerance   允许偏差，单位摄氏度
- * @return 是否处于稳定温区
- */
-bool Heater::IsStable(float temperature, float tolerance) const
-{
-    return temperature >= target_temperature_ - tolerance &&
-           temperature <= target_temperature_ + tolerance;
-}
-
-} // namespace heater
-
-/**
  * @brief imu
  *
  */
 namespace imu {
+
+/**
+ * @brief 根据 Kconfig 选择底层 IMU 数据源
+ *
+ * 通过 CONFIG_MOD_DEV_IMU_* 编译时宏决定实例化哪个驱动，
+ * 驱动在对应板的 .conf 中开启，代码层无需频繁切换。
+ *
+ * @return 是否成功选定并注册了数据源
+ */
+bool ImuManager::SelectSource()
+{
+#if CONFIG_MOD_DEV_IMU_ICM42688P
+{
+    #pragma message "Select IMU driver: ICM42688P"
+    source_ = &icm42688p::Instance();
+    return source_ != nullptr && RegisterSourceFromDevicetree(icm42688p::RegisterFromDevicetree);
+}
+#elif CONFIG_MOD_DEV_IMU_BMI088
+{
+    #pragma message "Select IMU driver: BMI088"
+    source_ = &bmi088::Instance();
+    return source_ != nullptr && RegisterSourceFromDevicetree(bmi088::RegisterFromDevicetree);
+}
+#else
+{
+    #warning "No IMU driver selected"
+    return false;
+}
+#endif
+}
 
 /**
  * @brief 初始化 IMU 管理器
@@ -304,32 +229,109 @@ void ImuManager::Task()
     }
 }
 
+} // namespace imu
+
 /**
- * @brief 根据 Kconfig 选择底层 IMU 数据源
+ * @brief attitude
  *
- * 通过 CONFIG_MOD_DEV_IMU_* 编译时宏决定实例化哪个驱动，
- * 驱动在对应板的 .conf 中开启，代码层无需频繁切换。
- *
- * @return 是否成功选定并注册了数据源
  */
-bool ImuManager::SelectSource()
+namespace attitude {
+
+/**
+ * @brief 初始化姿态解算器
+ */
+void Processor::Init()
 {
-#if CONFIG_MOD_DEV_IMU_ICM42688P
-{
-    #pragma message "Select IMU driver: ICM42688P"
-    source_ = &icm42688p::Instance();
-    return source_ != nullptr && RegisterSourceFromDevicetree(icm42688p::RegisterFromDevicetree);
-}
-#elif CONFIG_MOD_DEV_IMU_BMI088
-{
-    #pragma message "Select IMU driver: BMI088"
-    source_ = &bmi088::Instance();
-    return source_ != nullptr && RegisterSourceFromDevicetree(bmi088::RegisterFromDevicetree);
-}
-#else
-    #warning "No IMU driver selected"
-    return false;
-#endif
+    constexpr float kDefaultAccelLpfTimeConstant = 0.02f;
+    alg::attitude::QuaternionEkf::Config cfg {};
+    cfg.accel_lpf_coefficient = kDefaultAccelLpfTimeConstant;
+    ekf_.Init(cfg);
 }
 
-} // namespace imu
+/**
+ * @brief 处理一帧 IMU 工程量样本并整理发布消息
+ *
+ * @param sample 当前 IMU 工程量样本
+ * @param pub    输出到项目内部 topic 的发布消息
+ */
+void Processor::Process(const Sample& sample, topic::imu_to::Message& pub)
+{
+    ekf_.Update(sample);
+
+    const auto& state = ekf_.GetState();
+
+    memcpy(pub.quaternion, state.q,    sizeof(pub.quaternion));
+    memcpy(pub.gyro,       state.Gyro, sizeof(pub.gyro));
+
+    pub.roll        = state.Roll;
+    pub.pitch       = state.Pitch;
+    pub.yaw         = state.Yaw;
+    pub.yaw_total   = state.YawTotalAngle;
+    pub.temperature = sample.temperature;
+}
+
+} // namespace attitude
+
+/**
+ * @brief heater
+ *
+ */
+namespace heater {
+
+/**
+ * @brief 初始化 IMU 加热器
+ *
+ * 目标温度和 PID 参数当前使用类内默认值，后续需要开放时再从上层传入。
+ *
+ * @return 初始化是否成功
+ */
+bool Heater::Init()
+{
+    static const pwm_dt_spec heater_pwm = PWM_DT_SPEC_GET(DT_ALIAS(imu_pwm));
+
+    if (!heater_pwm_.init(heater_pwm)) {
+        return false;
+    }
+
+    pid_.Init(kDefaultPidConfig);
+
+    duty_ = 0.0f;
+    initialized_ = true;
+    return heater_pwm_.SetDuty(duty_);
+}
+
+/**
+ * @brief 根据当前温度更新加热占空比
+ *
+ * @param temperature 当前 IMU 温度，单位摄氏度
+ */
+void Heater::Update(float temperature)
+{
+    if (!initialized_) {
+        return;
+    }
+
+    duty_ = pid_.Calc(target_temperature_, temperature);
+    if (duty_ < 1.f - kMaxDuty) {
+        duty_ = 1.f - kMaxDuty;
+    }
+    if (duty_ > kMaxDuty) {
+        duty_ = kMaxDuty;
+    }
+    (void)heater_pwm_.SetDuty(duty_);
+}
+
+/**
+ * @brief 判断当前温度是否已经稳定在目标温度附近
+ *
+ * @param temperature 当前 IMU 温度
+ * @param tolerance   允许偏差，单位摄氏度
+ * @return 是否处于稳定温区
+ */
+bool Heater::IsStable(float temperature, float tolerance) const
+{
+    return temperature >= target_temperature_ - tolerance &&
+           temperature <= target_temperature_ + tolerance;
+}
+
+} // namespace heater

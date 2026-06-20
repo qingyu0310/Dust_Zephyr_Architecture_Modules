@@ -11,6 +11,8 @@
 
 #include "powermeter.hpp"
 
+#pragma message "Compiling Modules/Powermeter"
+
 void PowerMeter::CanCpltRxCallback(uint8_t* buffer)
 {
     const uint8_t* data         = buffer;

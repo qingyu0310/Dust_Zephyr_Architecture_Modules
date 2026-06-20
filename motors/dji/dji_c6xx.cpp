@@ -11,6 +11,8 @@
 
 #include "dji_c6xx.hpp"
 
+#pragma message "Compiling Modules/Motors Dji"
+
 namespace {
     static constexpr float kpi  = 3.141592653589793f;
     static constexpr float k2pi = 6.283185307179586f;
