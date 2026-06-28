@@ -82,7 +82,7 @@ bool ImuManager::SelectSource()
 {
 #if CONFIG_MOD_DEV_IMU_ICM42688P
 {
-    #pragma message "Select IMU driver: ICM42688P"
+    #pragma  message "Select IMU driver: ICM42688P"
     source_ = &icm42688p::Instance();
     return source_ != nullptr && RegisterSourceFromDevicetree(icm42688p::RegisterFromDevicetree);
 }
@@ -200,7 +200,7 @@ bool ImuManager::Process(const Sample& sample)
     heater_.Update(sample.temperature);
 
     timer_.Clock([&](){
-        printk("%f,%f,%f\n", (double)sample.temperature, (double)pub_.yaw, (double)pub_.pitch);
+        // printk("%f,%f,%f\n", (double)pub_.roll, (double)pub_.pitch, (double)pub_.yaw);
     });
 
     attitude_.Process(sample, pub_);
@@ -244,7 +244,7 @@ void Processor::Init()
 {
     constexpr float kDefaultAccelLpfTimeConstant = 0.02f;
     alg::attitude::QuaternionEkf::Config cfg {};
-    cfg.accel_lpf_coefficient = kDefaultAccelLpfTimeConstant;
+    cfg.alpha = kDefaultAccelLpfTimeConstant;
     ekf_.Init(cfg);
 }
 
@@ -260,13 +260,13 @@ void Processor::Process(const Sample& sample, topic::imu_to::Message& pub)
 
     const auto& state = ekf_.GetState();
 
-    memcpy(pub.quaternion, state.q,    sizeof(pub.quaternion));
-    memcpy(pub.gyro,       state.Gyro, sizeof(pub.gyro));
+    memcpy(pub.quaternion, state.q,  sizeof(pub.quaternion));
+    memcpy(pub.gyro,       state.w,  sizeof(pub.gyro));
 
-    pub.roll        = state.Roll;
-    pub.pitch       = state.Pitch;
-    pub.yaw         = state.Yaw;
-    pub.yaw_total   = state.YawTotalAngle;
+    pub.roll        = state.roll;
+    pub.pitch       = state.pitch;
+    pub.yaw         = state.yaw;
+    pub.yaw_total   = state.yaw_sum;
     pub.temperature = sample.temperature;
 }
 

@@ -32,7 +32,7 @@ config MOD_DEV_REMOTE
 config MOD_DEV_IMU
     bool "IMU module"
     default n
-    select FLT_QUATERNION_EKF
+    select FLT_QUATERNION
     select TPC_IMU_TO
     select DEV_PWM
     select CTL_PID
