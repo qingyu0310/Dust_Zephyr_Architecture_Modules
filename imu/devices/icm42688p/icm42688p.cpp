@@ -12,6 +12,9 @@
 #include <string.h>
 #include <zephyr/devicetree.h>
 #include <zephyr/kernel.h>
+#include <zephyr/logging/log.h>
+
+LOG_MODULE_REGISTER(icm42688p, LOG_LEVEL_INF);
 
 namespace icm42688p {
 
@@ -24,8 +27,6 @@ struct RegConfig {
     uint8_t reg;
     uint8_t value;
 };
-
-constexpr uint8_t kPwrCtrlEnableAccelGyro = 0x0F;
 
 /**
  * @brief 当前已确认的通用寄存器初始化表
@@ -40,8 +41,6 @@ constexpr RegConfig kInitConfig[] {
     {reg::kFifoDowns,    reg::kFifoDownsDefault },
 };
 
-static Icm42688p icm42688p_ {};
-
 } // namespace
 
 /**
@@ -49,13 +48,14 @@ static Icm42688p icm42688p_ {};
  */
 Icm42688p& Instance()
 {
+    static Icm42688p icm42688p_ {};
     return icm42688p_;
 }
 
 /**
  * @brief 通过板级 alias 构造 ICM42688P Source 配置
  */
-bool RegisterFromDevicetree(uint32_t period_ms)
+bool RegisterFromDevicetree()
 {
     constexpr uint32_t kSpiOperation = SPI_WORD_SET(8) | SPI_TRANSFER_MSB | SPI_MODE_CPOL | SPI_MODE_CPHA;
 
@@ -63,19 +63,17 @@ bool RegisterFromDevicetree(uint32_t period_ms)
 
     Icm42688p::Config cfg {};
     cfg.spi = &imu;
-    cfg.common.period_ms = period_ms;
 
-    icm42688p_.Configure(cfg);
+    for (uint8_t axis = 0; axis < 3; axis++)
+    {
+        cfg.static_calibration.gyro_offset [axis] = reg::kStaticGyroOffset [axis];
+        cfg.static_calibration.gyro_scale  [axis] = reg::kStaticGyroScale  [axis];
+        cfg.static_calibration.accel_offset[axis] = reg::kStaticAccelOffset[axis];
+        cfg.static_calibration.accel_scale [axis] = reg::kStaticAccelScale [axis];
+    }
+
+    icm42688p::Instance().config_ = cfg;
     return true;
-}
-
-/**
- * @brief 保存当前 ICM42688P 运行时配置
- */
-void Icm42688p::Configure(const Config& config)
-{
-    config_ = config;
-    ConfigureCommon(config.common);
 }
 
 /**
@@ -91,54 +89,45 @@ Error Icm42688p::LastError() const
  */
 bool Icm42688p::Init()
 {
-    last_error_ = Error::None;
     current_segment_ = 0xFFU;
+    last_error_ = Error::None;
 
     if (config_.spi == nullptr || !spi_.Init(*config_.spi)) {
-        printk("ICM42688P: SPI init failed\n");
+        LOG_ERR("SPI init failed");
         last_error_ = Error::DeviceNotReady;
         return false;
     }
 
-    k_msleep(3);
+    // SPI 初始化完成后忙等 3ms，待器件就绪再软复位
+    k_busy_wait(3000);
 
     if (!SoftReset()) {
-        printk("ICM42688P: Soft reset failed\n");
+        LOG_ERR("Soft reset failed");
         last_error_ = Error::Config;
         return false;
     }
 
     if (!SelectSegment(reg::kSegSelGeneral)) {
-        printk("ICM42688P: Select general segment failed\n");
+        LOG_ERR("Select general segment failed");
         last_error_ = Error::Config;
         return false;
     }
 
     uint8_t chip_id = 0;
     if (!ReadReg(reg::kWhoAmI, chip_id)) {
-        printk("ICM42688P: Read WHO_AM_I failed\n");
+        LOG_ERR("Read WHO_AM_I failed");
         last_error_ = Error::ChipId;
         return false;
     }
     if (chip_id != reg::kWhoAmIValue) {
-        printk("ICM42688P: WHO_AM_I mismatch, got 0x%02X, expected 0x%02X\n", chip_id, reg::kWhoAmIValue);
+        LOG_ERR("WHO_AM_I mismatch, got 0x%02X, expected 0x%02X", chip_id, reg::kWhoAmIValue);
         last_error_ = Error::ChipId;
         return false;
     }
 
     if (!InitRegisters()) {
-        printk("ICM42688P: Init registers failed\n");
+        LOG_ERR("Init registers failed");
         last_error_ = Error::Config;
-        return false;
-    }
-
-    return true;
-}
-
-bool Icm42688p::Calibrate()
-{
-    if (!AutoCalibrate()) {
-        printk("ICM42688P: Auto calibration failed\n");
         return false;
     }
 
@@ -151,25 +140,25 @@ bool Icm42688p::Calibrate()
 bool Icm42688p::ReadRaw(ImuRawSample& raw)
 {
     uint8_t motion_data[12] {};
-    uint8_t temp_data[2] {};
+    uint8_t temp_data[2]    {};
 
     if (!SelectSegment(reg::kSegSelGeneral) ||
         !ReadRegs(reg::kAccXH, motion_data, sizeof(motion_data)) ||
-        !ReadRegs(reg::kTempH, temp_data, sizeof(temp_data))) 
+        !ReadRegs(reg::kTempH, temp_data  , sizeof(temp_data))) 
     {
         last_error_ = Error::ReadFailed;
         return false;
     }
 
-    raw.accel[0] = static_cast<int16_t>((static_cast<uint16_t>(motion_data[0]) << 8)  | static_cast<uint16_t>(motion_data[1]));
-    raw.accel[1] = static_cast<int16_t>((static_cast<uint16_t>(motion_data[2]) << 8)  | static_cast<uint16_t>(motion_data[3]));
-    raw.accel[2] = static_cast<int16_t>((static_cast<uint16_t>(motion_data[4]) << 8)  | static_cast<uint16_t>(motion_data[5]));
+    raw.accel[0] = static_cast<int16_t>((static_cast<uint16_t>(motion_data[0])  << 8)  | static_cast<uint16_t>(motion_data[1]));
+    raw.accel[1] = static_cast<int16_t>((static_cast<uint16_t>(motion_data[2])  << 8)  | static_cast<uint16_t>(motion_data[3]));
+    raw.accel[2] = static_cast<int16_t>((static_cast<uint16_t>(motion_data[4])  << 8)  | static_cast<uint16_t>(motion_data[5]));
 
-    raw.gyro [0] = static_cast<int16_t>((static_cast<uint16_t>(motion_data[6]) << 8)  | static_cast<uint16_t>(motion_data[7]));
-    raw.gyro [1] = static_cast<int16_t>((static_cast<uint16_t>(motion_data[8]) << 8)  | static_cast<uint16_t>(motion_data[9]));
-    raw.gyro [2] = static_cast<int16_t>((static_cast<uint16_t>(motion_data[10]) << 8) | static_cast<uint16_t>(motion_data[11]));
+    raw.gyro [0] = static_cast<int16_t>((static_cast<uint16_t>(motion_data[6])  << 8)  | static_cast<uint16_t>(motion_data[7]));
+    raw.gyro [1] = static_cast<int16_t>((static_cast<uint16_t>(motion_data[8])  << 8)  | static_cast<uint16_t>(motion_data[9]));
+    raw.gyro [2] = static_cast<int16_t>((static_cast<uint16_t>(motion_data[10]) << 8)  | static_cast<uint16_t>(motion_data[11]));
 
-    raw.temperature = static_cast<int16_t>((static_cast<uint16_t>(temp_data[0]) << 8) | static_cast<uint16_t>(temp_data[1]));
+    raw.temp = static_cast<int16_t>((static_cast<uint16_t>(temp_data[0]) << 8)  | static_cast<uint16_t>(temp_data[1]));
 
     last_error_ = Error::None;
     return true;
@@ -186,7 +175,7 @@ bool Icm42688p::SoftReset()
         return false;
     }
 
-    k_msleep(2);
+    k_busy_wait(2000);
     current_segment_ = 0xFFU;
     return true;
 }
@@ -205,23 +194,15 @@ bool Icm42688p::InitRegisters()
         if (!WriteChecked(cfg.reg, cfg.value)) {
             return false;
         }
-        k_msleep(1);
+        k_busy_wait(1000);
     }
 
-    if (!WriteChecked(reg::kPwrCtrl, kPwrCtrlEnableAccelGyro)) {
+    if (!WriteChecked(reg::kPwrCtrl, reg::kPwrOnAll)) {
         return false;
     }
 
-    k_msleep(50);
+    k_busy_wait(50000);
     return true;
-}
-
-/**
- * @brief 使用公共流程执行 ICM42688P 自动标定
- */
-bool Icm42688p::AutoCalibrate()
-{
-    return AutoCalibrateCommon(kGravity);
 }
 
 /**
@@ -295,7 +276,7 @@ bool Icm42688p::WriteChecked(uint8_t addr, uint8_t value)
         return false;
     }
 
-    k_msleep(1);
+    k_busy_wait(1000);
     return ReadReg(addr, readback) && readback == value;
 }
 
@@ -304,7 +285,8 @@ bool Icm42688p::WriteChecked(uint8_t addr, uint8_t value)
  */
 float Icm42688p::ConvertAccel(int16_t raw) const
 {
-    return static_cast<float>(raw) * kAccel16gSensitivity * kGravity;
+    constexpr float kSens16g = 16.0f / 32768.0f;
+    return static_cast<float>(raw) * kSens16g * 9.8f;
 }
 
 /**
@@ -312,7 +294,8 @@ float Icm42688p::ConvertAccel(int16_t raw) const
  */
 float Icm42688p::ConvertGyro(int16_t raw) const
 {
-    return static_cast<float>(raw) * kGyro2000Sensitivity;
+    constexpr float kSens2000Dps = 0.0010652644360316953f;
+    return static_cast<float>(raw) * kSens2000Dps;
 }
 
 /**
@@ -320,15 +303,8 @@ float Icm42688p::ConvertGyro(int16_t raw) const
  */
 float Icm42688p::ConvertTemperature(int16_t raw) const
 {
-    return static_cast<float>(raw) * kTemperatureSensitivity + kTemperatureOffset;
-}
-
-/**
- * @brief 提供给公共基类使用的毫秒级延时
- */
-void Icm42688p::SleepMs(uint32_t ms) const
-{
-    k_msleep(ms);
+    constexpr float kFactor = 1.0f / 512.0f, kOff = 23.0f;
+    return static_cast<float>(raw) * kFactor + kOff;
 }
 
 } // namespace icm42688p

@@ -8,7 +8,7 @@
 
 #pragma once
 
-#include "imu_source_base.hpp"
+#include "imu_device_layer.hpp"
 #include "spi.hpp"
 
 #include <cstdint>
@@ -42,35 +42,26 @@ public:
      */
     struct Config {
         const struct spi_dt_spec *spi = nullptr;
-        ImuCommonConfig common {};
+        ImuCalibration static_calibration {};
     };
 
-    /**
-     * @brief 更新当前 ICM42688P 配置
-     */
-    void Configure(const Config& config);
-
-    /**
-     * @brief 初始化 SPI、校验芯片 ID 并按需执行自动标定
-     */
     bool Init() override;
-    bool Calibrate() override;
-
-    /**
-     * @brief 返回最近一次驱动错误码
-     */
     Error LastError() const;
 
+    friend bool RegisterFromDevicetree();
+
 private:
-    static constexpr float kAccel16gSensitivity     = 16.0f / 32768.0f;
-    static constexpr float kGyro2000Sensitivity     = 0.0010652644360316953f;
-    static constexpr float kTemperatureSensitivity  = 1.0f / 512.0f;
-    static constexpr float kTemperatureOffset       = 23.0f;
-    static constexpr float kGravity                 = 9.8f;
+    Config  config_ {};
+    Spi     spi_    {};
+    Error   last_error_      = Error::None;
+    uint8_t current_segment_ = 0xFFU;        // 当前寄存器段，0xFF 表示未选择
+
+    static constexpr uint32_t kSpiBufferSize = 16;
+    uint8_t tx_[kSpiBufferSize] {};
+    uint8_t rx_[kSpiBufferSize] {};
 
     bool  SoftReset          ();
     bool  InitRegisters      ();
-    bool  AutoCalibrate      ();
     bool  SelectSegment      (uint8_t segment);
     bool  ReadRaw            (ImuRawSample& raw) override;
     bool  WriteReg           (uint8_t addr, uint8_t  value);
@@ -80,18 +71,6 @@ private:
     float ConvertAccel       (int16_t raw) const override;
     float ConvertGyro        (int16_t raw) const override;
     float ConvertTemperature (int16_t raw) const override;
-    void  SleepMs            (uint32_t ms) const override;
-
-    Config config_ {};
-    Spi spi_ {};
-    Error last_error_ = Error::None;
-    uint8_t current_segment_ = 0xFFU;
-    
-    // ICM42688P 当前最大单次 SPI 事务为连续读 12 字节运动数据加 1 字节命令，
-    // 这里额外留出少量余量，统一使用 16 字节缓冲区。
-    static constexpr uint32_t kSpiBufferSize = 16U;
-    uint8_t tx_[kSpiBufferSize] {};
-    uint8_t rx_[kSpiBufferSize] {};
 };
 
 /**
@@ -102,6 +81,6 @@ Icm42688p& Instance();
 /**
  * @brief 根据 devicetree alias 构造 ICM42688P 配置
  */
-bool RegisterFromDevicetree(uint32_t period_ms = 1);
+bool RegisterFromDevicetree();
 
 } // namespace icm42688p

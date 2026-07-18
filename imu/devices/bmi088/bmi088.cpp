@@ -12,6 +12,9 @@
 #include <string.h>
 #include <zephyr/devicetree.h>
 #include <zephyr/kernel.h>
+#include <zephyr/logging/log.h>
+
+LOG_MODULE_REGISTER(bmi088, LOG_LEVEL_INF);
 
 namespace bmi088 {
 
@@ -49,8 +52,6 @@ constexpr RegConfig kGyroConfig[] {
     {reg::kGyroIoMap,       reg::kGyroDrdyInt3          },
 };
 
-static Bmi088 bmi088_ {};
-
 } // namespace
 
 /**
@@ -58,13 +59,14 @@ static Bmi088 bmi088_ {};
  */
 Bmi088& Instance()
 {
+    static Bmi088 bmi088_ {};
     return bmi088_;
 }
 
 /**
  * @brief 通过板级 alias 构造 BMI088 Source 配置
  */
-bool RegisterFromDevicetree(uint32_t period_ms)
+bool RegisterFromDevicetree()
 {
     constexpr uint32_t kSpiOperation = SPI_WORD_SET(8) | SPI_TRANSFER_MSB | SPI_MODE_CPOL | SPI_MODE_CPHA;
 
@@ -74,27 +76,17 @@ bool RegisterFromDevicetree(uint32_t period_ms)
     Bmi088::Config cfg {};
     cfg.accel = &accel;
     cfg.gyro  = &gyro;
-    cfg.common.period_ms = period_ms;
 
-    for (uint8_t axis = 0; axis < 3; axis++) 
+    for (uint8_t axis = 0; axis < 3; axis++)
     {
-        cfg.common.static_calibration.gyro_offset [axis] = reg::kStaticGyroOffset [axis];
-        cfg.common.static_calibration.gyro_scale  [axis] = reg::kStaticGyroScale  [axis];
-        cfg.common.static_calibration.accel_offset[axis] = reg::kStaticAccelOffset[axis];
-        cfg.common.static_calibration.accel_scale [axis] = reg::kStaticAccelScale [axis];
+        cfg.static_calibration.gyro_offset [axis] = reg::kStaticGyroOffset [axis];
+        cfg.static_calibration.gyro_scale  [axis] = reg::kStaticGyroScale  [axis];
+        cfg.static_calibration.accel_offset[axis] = reg::kStaticAccelOffset[axis];
+        cfg.static_calibration.accel_scale [axis] = reg::kStaticAccelScale [axis];
     }
 
-    bmi088_.Configure(cfg);
+    bmi088::Instance().config_ = cfg;
     return true;
-}
-
-/**
- * @brief 保存当前 BMI088 运行时配置
- */
-void Bmi088::Configure(const Config& config)
-{
-    config_ = config;
-    ConfigureCommon(config.common);
 }
 
 /**
@@ -113,25 +105,23 @@ bool Bmi088::Init()
     last_error_ = Error::None;
 
     if (config_.accel == nullptr || !accel_.Init(*config_.accel)) {
+        LOG_ERR("Accel SPI init failed");
         last_error_ = Error::AccelNotReady;
         return false;
     }
 
     if (config_.gyro == nullptr  || !gyro_.Init(*config_.gyro)) {
+        LOG_ERR("Gyro SPI init failed");
         last_error_ = Error::GyroNotReady;
         return false;
     }
 
     if (!InitAccel() || !InitGyro()) {
+        LOG_ERR("Device init failed");
         return false;
     }
 
     return true;
-}
-
-bool Bmi088::Calibrate()
-{
-    return AutoCalibrate();
 }
 
 /**
@@ -140,8 +130,8 @@ bool Bmi088::Calibrate()
 bool Bmi088::ReadRaw(ImuRawSample& raw)
 {
     uint8_t accel_raw[6] {};
-    uint8_t gyro_raw[6] {};
-    uint8_t temp_raw[2] {};
+    uint8_t gyro_raw[6]  {};
+    uint8_t temp_raw[2]  {};
 
     if (!ReadAccel(reg::kAccXoutL,  accel_raw, sizeof(accel_raw)) ||
         !ReadGyro (reg::kGyroXoutL, gyro_raw,  sizeof(gyro_raw))  ||
@@ -155,13 +145,13 @@ bool Bmi088::ReadRaw(ImuRawSample& raw)
     raw.accel[1] = static_cast<int16_t>((static_cast<uint16_t>(accel_raw[3]) << 8) | static_cast<uint16_t>(accel_raw[2]));
     raw.accel[2] = static_cast<int16_t>((static_cast<uint16_t>(accel_raw[5]) << 8) | static_cast<uint16_t>(accel_raw[4]));
 
-    raw.gyro [0] = static_cast<int16_t>((static_cast<uint16_t>(gyro_raw[1]) << 8) | static_cast<uint16_t>(gyro_raw[0]));
-    raw.gyro [1] = static_cast<int16_t>((static_cast<uint16_t>(gyro_raw[3]) << 8) | static_cast<uint16_t>(gyro_raw[2]));
-    raw.gyro [2] = static_cast<int16_t>((static_cast<uint16_t>(gyro_raw[5]) << 8) | static_cast<uint16_t>(gyro_raw[4]));
+    raw.gyro [0] = static_cast<int16_t>((static_cast<uint16_t>(gyro_raw[1])  << 8) | static_cast<uint16_t>(gyro_raw[0]));
+    raw.gyro [1] = static_cast<int16_t>((static_cast<uint16_t>(gyro_raw[3])  << 8) | static_cast<uint16_t>(gyro_raw[2]));
+    raw.gyro [2] = static_cast<int16_t>((static_cast<uint16_t>(gyro_raw[5])  << 8) | static_cast<uint16_t>(gyro_raw[4]));
 
-    raw.temperature = static_cast<int16_t>((static_cast<uint16_t>(temp_raw[0]) << 3) | (static_cast<uint16_t>(temp_raw[1]) >> 5));
-    if (raw.temperature > 1023) {
-        raw.temperature -= 2048;
+    raw.temp = static_cast<int16_t>((static_cast<uint16_t>(temp_raw[0]) << 3) | (static_cast<uint16_t>(temp_raw[1]) >> 5));
+    if (raw.temp > 1023) {
+        raw.temp -= 2048;
     }
 
     last_error_ = Error::None;
@@ -177,29 +167,35 @@ bool Bmi088::InitAccel()
     // BMI088 在上电或复位后的前几次寄存器访问可能不稳定，
     // 这里先做两次预热读，再进入后续正式的 CHIP_ID 校验流程。
     (void)ReadAccelReg(reg::kAccChipId, chip_id);
-    k_msleep(1);
+    k_busy_wait(1000);
+
     (void)ReadAccelReg(reg::kAccChipId, chip_id);
-    k_msleep(1);
+    k_busy_wait(1000);
 
     if (!WriteAccel(reg::kAccSoftReset, reg::kAccResetValue)) {
+        LOG_ERR("Accel soft reset failed");
         last_error_ = Error::AccelConfig;
         return false;
     }
-    k_msleep(80);
+    k_busy_wait(80000);
 
     (void)ReadAccelReg(reg::kAccChipId, chip_id);
-    k_msleep(1);
+    k_busy_wait(1000);
+
     if (!ReadAccelReg(reg::kAccChipId, chip_id) || chip_id != reg::kAccChipIdValue) {
+        LOG_ERR("Accel CHIP_ID mismatch, got 0x%02X", chip_id);
         last_error_ = Error::AccelChipId;
         return false;
     }
 
-    for (const auto& cfg : kAccelConfig) {
+    for (const auto& cfg : kAccelConfig) 
+    {
         if (!WriteCheckedAccel(cfg.reg, cfg.value)) {
+            LOG_ERR("Accel reg 0x%02X write failed", cfg.reg);
             last_error_ = Error::AccelConfig;
             return false;
         }
-        k_msleep(1);
+        k_busy_wait(1000);
     }
 
     return true;
@@ -212,42 +208,39 @@ bool Bmi088::InitGyro()
 {
     uint8_t chip_id = 0;
     (void)ReadGyroReg(reg::kGyroChipId, chip_id);   // BMI088 在上电或复位后的前几次寄存器访问可能不稳定，
-    k_msleep(1);
-    (void)ReadGyroReg(reg::kGyroChipId, chip_id);   // 这里先做两次预热读，再进入后续正式的 CHIP_ID 校验流程。
-    k_msleep(1);
+    k_busy_wait(1000);
 
-    if (!WriteGyro(reg::kGyroSoftReset, reg::kGyroResetValue)) {
+    (void)ReadGyroReg(reg::kGyroChipId, chip_id);   // 这里先做两次预热读，再进入后续正式的 CHIP_ID 校验流程。
+    k_busy_wait(1000);
+
+    if (!WriteGyro(reg::kGyroSoftReset, reg::kGyroResetValue)) 
+    {
+        LOG_ERR("Gyro soft reset failed");
         last_error_ = Error::GyroConfig;
         return false;
     }
-    k_msleep(80);
+    k_busy_wait(80000);
 
     (void)ReadGyroReg(reg::kGyroChipId, chip_id);
-    k_msleep(1);
+    k_busy_wait(1000);
 
     if (!ReadGyroReg(reg::kGyroChipId, chip_id) || chip_id != reg::kGyroChipIdValue) {
+        LOG_ERR("Gyro CHIP_ID mismatch, got 0x%02X", chip_id);
         last_error_ = Error::GyroChipId;
         return false;
     }
 
-    for (const auto& cfg : kGyroConfig) 
+    for (const auto& cfg : kGyroConfig)
     {
         if (!WriteCheckedGyro(cfg.reg, cfg.value)) {
+            LOG_ERR("Gyro reg 0x%02X write failed", cfg.reg);
             last_error_ = Error::GyroConfig;
             return false;
         }
-        k_msleep(1);
+        k_busy_wait(1000);
     }
 
     return true;
-}
-
-/**
- * @brief 使用公共流程执行 BMI088 自动标定
- */
-bool Bmi088::AutoCalibrate()
-{
-    return AutoCalibrateCommon(kGravity);
 }
 
 /**
@@ -284,6 +277,7 @@ bool Bmi088::ReadAccel(uint8_t addr, uint8_t *data, uint32_t len)
 
     memset(tx_, kReadDummyByte, len + 2);
     memset(rx_, kRxClearByte,   len + 2);
+
     tx_[0] = addr | reg::kReadFlag;
 
     if (!accel_.Transceive(tx_, rx_, len + 2)) {
@@ -308,6 +302,7 @@ bool Bmi088::ReadGyro(uint8_t addr, uint8_t *data, uint32_t len)
 
     memset(tx_, kReadDummyByte, len + 1);
     memset(rx_, kRxClearByte,   len + 1);
+    
     tx_[0] = addr | reg::kReadFlag;
 
     if (!gyro_.Transceive(tx_, rx_, len + 1)) {
@@ -343,7 +338,7 @@ bool Bmi088::WriteCheckedAccel(uint8_t addr, uint8_t value)
     if (!WriteAccel(addr, value)) {
         return false;
     }
-    k_msleep(1);
+    k_busy_wait(1000);
     return ReadAccelReg(addr, readback) && readback == value;
 }
 
@@ -356,7 +351,7 @@ bool Bmi088::WriteCheckedGyro(uint8_t addr, uint8_t value)
     if (!WriteGyro(addr, value)) {
         return false;
     }
-    k_msleep(1);
+    k_busy_wait(1000);
     return ReadGyroReg(addr, readback) && readback == value;
 }
 
@@ -365,7 +360,8 @@ bool Bmi088::WriteCheckedGyro(uint8_t addr, uint8_t value)
  */
 float Bmi088::ConvertAccel(int16_t raw) const
 {
-    return static_cast<float>(raw) * kAccel6gSensitivity;
+    constexpr float kSens6g = 0.00179443359375f;
+    return static_cast<float>(raw) * kSens6g;
 }
 
 /**
@@ -373,7 +369,8 @@ float Bmi088::ConvertAccel(int16_t raw) const
  */
 float Bmi088::ConvertGyro(int16_t raw) const
 {
-    return static_cast<float>(raw) * kGyro2000Sensitivity;
+    constexpr float kSens2000Dps = 0.0010652644360316953f;
+    return static_cast<float>(raw) * kSens2000Dps;
 }
 
 /**
@@ -381,15 +378,8 @@ float Bmi088::ConvertGyro(int16_t raw) const
  */
 float Bmi088::ConvertTemperature(int16_t raw) const
 {
-    return static_cast<float>(raw) * kTemperatureFactor + kTemperatureOffset;
-}
-
-/**
- * @brief 提供给公共基类使用的毫秒级延时
- */
-void Bmi088::SleepMs(uint32_t ms) const
-{
-    k_msleep(ms);
+    constexpr float kFactor = 0.125f, kOff = 23.0f;
+    return static_cast<float>(raw) * kFactor + kOff;
 }
 
 } // namespace bmi088

@@ -8,7 +8,7 @@
 
 #pragma once
 
-#include "imu_source_base.hpp"
+#include "imu_device_layer.hpp"
 #include "spi.hpp"
 
 #include <cstdint>
@@ -47,35 +47,18 @@ public:
     struct Config {
         const struct spi_dt_spec *accel = nullptr;
         const struct spi_dt_spec *gyro = nullptr;
-        ImuCommonConfig common {};
+        ImuCalibration static_calibration {};
     };
 
-    /**
-     * @brief 更新当前 BMI088 配置
-     */
-    void Configure(const Config& config);
-
-    /**
-     * @brief 初始化 BMI088 两个子器件并按需执行自动标定
-     */
     bool Init() override;
-    bool Calibrate() override;
 
-    /**
-     * @brief 返回最近一次驱动错误码
-     */
+    friend bool RegisterFromDevicetree();
+
     Error LastError() const;
 
 private:
-    static constexpr float kAccel6gSensitivity = 0.00179443359375f;
-    static constexpr float kGyro2000Sensitivity = 0.0010652644360316953f;
-    static constexpr float kTemperatureFactor = 0.125f;
-    static constexpr float kTemperatureOffset = 23.0f;
-    static constexpr float kGravity = 9.8f;
-
     bool  InitAccel          ();
     bool  InitGyro           ();
-    bool  AutoCalibrate      ();
     bool  ReadRaw            (ImuRawSample& raw) override;
     bool  WriteAccel         (uint8_t addr, uint8_t  value);
     bool  WriteGyro          (uint8_t addr, uint8_t  value);
@@ -88,15 +71,13 @@ private:
     float ConvertAccel       (int16_t raw) const override;
     float ConvertGyro        (int16_t raw) const override;
     float ConvertTemperature (int16_t raw) const override;
-    void  SleepMs            (uint32_t ms) const override;
 
     Config config_ {};
     Spi accel_ {};
     Spi gyro_  {};
     Error last_error_ = Error::None;
 
-    // BMI088 当前最大单次 SPI 事务为 accel 连读 6 字节数据加 2 字节开销。
-    static constexpr uint32_t kSpiBufferSize = 8U;
+    static constexpr uint32_t kSpiBufferSize = 8;
     uint8_t tx_[kSpiBufferSize] {};
     uint8_t rx_[kSpiBufferSize] {};
 };
@@ -109,6 +90,6 @@ Bmi088& Instance();
 /**
  * @brief 根据 devicetree alias 构造 BMI088 配置
  */
-bool RegisterFromDevicetree(uint32_t period_ms = 1);
+bool RegisterFromDevicetree();
 
 } // namespace bmi088

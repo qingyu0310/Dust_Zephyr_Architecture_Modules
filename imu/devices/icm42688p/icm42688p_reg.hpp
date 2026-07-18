@@ -90,6 +90,7 @@ constexpr uint8_t kSoftRstReg           = 0x4A;
 constexpr uint8_t kAccSelfTest          = 0x6D;
 constexpr uint8_t kGyrSelfTest          = 0x6F;
 constexpr uint8_t kPwrCtrl              = 0x7D;
+constexpr uint8_t kPwrOnAll             = 0x0F;         // accel + gyro + temp 全部上电
 
 // Special Register 1
 // 访问前先向 SEG_SEL 写入 0x83，完成后写回 0x00。
@@ -132,5 +133,26 @@ constexpr uint8_t kWristCtrl2           = 0x52;
 constexpr uint8_t kWristCtrl2Default    = 0x0F;
 constexpr uint8_t kWristCtrl3           = 0x53;
 constexpr uint8_t kWristCtrl3Default    = 0x93;
+
+/*
+ * 静态校准参数默认入口。
+ * 如果关闭自动校准，就直接使用这里的 offset/scale。
+ * 单位：
+ * - gyro_offset: rad/s
+ * - accel_offset: m/s^2
+ * - gyro_scale/accel_scale: 无量纲比例
+ */
+static constexpr float kStaticGyroOffset[3]  {
+    0.0f, 0.0f, 0.0f
+};
+static constexpr float kStaticGyroScale[3]   {
+    1.0f, 1.0f, 1.0f
+};
+static constexpr float kStaticAccelOffset[3] {
+    0.0f, 0.0f, 0.0f
+};
+static constexpr float kStaticAccelScale[3]  {
+    1.0f, 1.0f, 1.0f
+};
 
 } // namespace icm42688p::reg
