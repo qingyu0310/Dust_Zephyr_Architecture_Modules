@@ -8,11 +8,10 @@
 
 #pragma once
 
-#pragma message "Compiling Modules/Imu/Devices/DeviceLayer"
-
 #include <math.h>
 #include <stdint.h>
 #include <zephyr/kernel.h>
+#include <zephyr/sys/printk.h>
 
 /**
  * @brief 一帧 IMU 工程量样本
@@ -122,6 +121,14 @@ public:
             }
         }
 
+        printk("calib gyro_off: %.6f %.6f %.6f\n",
+               (double)static_calibration_.gyro_offset[0],
+               (double)static_calibration_.gyro_offset[1],
+               (double)static_calibration_.gyro_offset[2]);
+        printk("calib accel_off: %.6f %.6f %.6f\n",
+               (double)static_calibration_.accel_offset[0],
+               (double)static_calibration_.accel_offset[1],
+               (double)static_calibration_.accel_offset[2]);
         return true;
     }
 

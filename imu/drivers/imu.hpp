@@ -29,9 +29,8 @@ enum class ImuStartMode : uint8_t
 class ImuManager final
 {
 public:
-    void Init(ImuStartMode mode = ImuStartMode::Normal);
-    void Start(uint8_t prio);
-    bool IsReady() const { return ready_; }
+    bool Init(ImuStartMode mode = ImuStartMode::Normal);
+    bool Start(uint8_t prio);
 
 private:
     Source                  *source_    = nullptr;

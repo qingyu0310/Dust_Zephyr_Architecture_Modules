@@ -91,36 +91,37 @@ bool ImuManager::SelectSource()
  *
  * @param enable_auto_calibration 是否在启动阶段执行预热后的静态校准
  */
-void ImuManager::Init(ImuStartMode mode)
+bool ImuManager::Init(ImuStartMode mode)
 {
     ready_ = false;
 
     if (source_ == nullptr && !SelectSource()) {
         LOG_ERR("SelectSource failed");
-        return;
+        return false;
     }
     if (source_ == nullptr) {
         LOG_ERR("source is null");
-        return;
+        return false;
     }
     if (!source_->Init()) {
         LOG_ERR("source init failed");
-        return;
+        return false;
     }
+
     if (!heater_.Init()) {
         LOG_ERR("heater init failed");
-        return;
+        return false;
     }
     heater_.SetMode(heater::Mode::Normal);
 
     // Preheat();
-    LOG_INF("start preheat");
+    // LOG_INF("start preheat");
 
     if (mode == ImuStartMode::AutoCalib)
     {
         if (!source_->Calibrate()) { 
             LOG_ERR("calibrate failed"); 
-            return; 
+            return false; 
         }
         LOG_INF("calibrate done");
     }
@@ -133,8 +134,11 @@ void ImuManager::Init(ImuStartMode mode)
 #endif
 
     attitude_.Init();
+
     ready_ = true;
     LOG_INF("imu ready");
+    
+    return true;
 }
 
 /**
@@ -142,13 +146,14 @@ void ImuManager::Init(ImuStartMode mode)
  *
  * @param prio 线程优先级
  */
-void ImuManager::Start(uint8_t prio)
+bool ImuManager::Start(uint8_t prio)
 {
     if (!ready_) {
-        return;
+        return false;
     }
-
     thread_.Start(TaskEntry, prio, this);
+
+    return true;
 }
 
 /**

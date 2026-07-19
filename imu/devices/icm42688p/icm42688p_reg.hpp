@@ -143,13 +143,13 @@ constexpr uint8_t kWristCtrl3Default    = 0x93;
  * - gyro_scale/accel_scale: 无量纲比例
  */
 static constexpr float kStaticGyroOffset[3]  {
-    0.0f, 0.0f, 0.0f
+    -0.021454f, -0.010120f, -0.007212f
 };
 static constexpr float kStaticGyroScale[3]   {
     1.0f, 1.0f, 1.0f
 };
 static constexpr float kStaticAccelOffset[3] {
-    0.0f, 0.0f, 0.0f
+    0.012893f, -5.538631f, 9.977686f
 };
 static constexpr float kStaticAccelScale[3]  {
     1.0f, 1.0f, 1.0f
