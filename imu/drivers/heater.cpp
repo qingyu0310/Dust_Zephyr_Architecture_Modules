@@ -16,18 +16,11 @@
 #include <zephyr/drivers/pwm.h>
 #include <zephyr/logging/log.h>
 
-#pragma message "Compiling Modules/Imu/Drivers/Heater"
-
 #ifdef CONFIG_IMU_IDENTIFICATION
 
 #pragma message "Compiling Modules/Imu/Drivers/Ident"
 
 LOG_MODULE_REGISTER(ident, LOG_LEVEL_INF);
-
-namespace {
-    static constexpr float kMaxDuty = 0.95f;
-    static constexpr float kMinDuty = 0.001f;      // PWM最小不能为0
-};
 
 namespace ident {
 
@@ -63,6 +56,7 @@ void Identifier::ExecOpenLoop(float temp_c)
         return;
     }
 
+    // Finished → Cooldown：复位内部状态后等待温度降至基线
     if (state == OpenStage::Finished)
     {
         state           = OpenStage::Cooldown;
@@ -85,28 +79,25 @@ void Identifier::ExecOpenLoop(float temp_c)
             if (temp_c < kBaselineTempC) {
                 state = OpenStage::Heating;
                 duty_ = kDutySeq[0];
-                ResetWindow();
-                LOG_INF("Cooldown Skip");
-                LOG_INF("Step Start");
+                stable_.Reset();
+                LOG_INF("Cooldown Done");
             }
-            else if (temp_c <= kBaselineTempC + kBaselineTol && StableCheck(temp_c, dt_us)) {
+            else if (temp_c <= kBaselineTempC + kBaselineTol && stable_.Check(temp_c, dt_us * 1e-6f)) {
                 state = OpenStage::Heating;
                 duty_ = kDutySeq[0];
-                ResetWindow();
-                LOG_INF("Cooldown Stable");
-                LOG_INF("Step Start");
+                stable_.Reset();
+                LOG_INF("Cooldown Done");
             }
             break;
         }
         case OpenStage::Heating:
         {
-            if (StableCheck(temp_c, dt_us)) 
+            if (stable_.Check(temp_c, dt_us * 1e-6f))
             {
                 if (++stage < kNumStages) {
                     duty_ = kDutySeq[stage];
-                    ResetWindow();
-                    LOG_INF("Stage End");
-                    LOG_INF("Step Start");
+                    stable_.Reset();
+                    LOG_INF("Stage Done");
                 }
                 else {
                     duty_ = kMinDuty;
@@ -125,101 +116,29 @@ void Identifier::ExecOpenLoop(float temp_c)
 }
 
 /**
- * @brief 在 PID 输出上叠加方波扰动
- *
- * @param pid_duty PID 计算的占空比
- * @param temp_c   当前温度 (°C)
- * @return 叠加扰动后的占空比
- */
-float Identifier::Perturb(float pid_duty, float temp_c)
-{
-    constexpr float     kAmp     = 0.02f;    // 扰动幅值 (duty)
-    constexpr uint32_t  kPeriod  = 1000;     // 扰动半周期（帧数）
-    constexpr float     kStartC  = 35.0f;    // 开始扰动温度阈值 (°C)
-
-    if (temp_c < kStartC) return pid_duty;
-
-    const float delta = (++pert_cnt_ / kPeriod) % 2 ? kAmp : -kAmp;
-    return std::clamp(pid_duty + delta, kMinDuty, kMaxDuty);
-}
-
-/**
- * @brief 滑动窗口稳定判据
- *
- * @param temp_c  当前温度 (°C)
- * @param dt_us   采样间隔 (µs)
- * @return true  窗口满且温度稳定
- */
-bool Identifier::StableCheck(float temp_c, uint32_t dt_us)
-{
-    constexpr float kSlopeLimit = 0.01f;     // 稳定斜率限 (°C/s)
-    constexpr float kNoiseLimit = 0.10f;     // 稳定极差限 (°C)
-
-    if (win_.cnt < kWinSamples) {
-        PushWin(temp_c);
-        return false;
-    }
-
-    float mn = win_.buf[0], mx = win_.buf[0];
-    for (uint32_t i = 1; i < kWinSamples; i++) {
-        if (win_.buf[i] < mn) mn = win_.buf[i];
-        if (win_.buf[i] > mx) mx = win_.buf[i];
-    }
-
-    const float dt_s = (dt_us != 0) ? (static_cast<float>(dt_us) * 1e-6f) : 0.001f;
-    const float slope = (temp_c - win_.prev_c) / dt_s;
-    PushWin(temp_c);
-
-    return std::abs(slope) <= kSlopeLimit && (mx - mn) <= kNoiseLimit;
-}
-
-/**
- * @brief 向滑动窗口推入一帧温度
- *
- * @param temp_c 当前温度 (°C)
+ * @brief 读取 UART 指令
  */
 void Identifier::CheckCmd()
 {
-    struct CmdEntry { 
-        const char* name; 
-        Cmd id; 
+    struct CmdEntry {
+        const char* name;
+        Cmd id;
     }  constexpr kCmds[]  {                                       // PC下发指令
-        { "StartIdent",   Cmd::StartIdent  },       
-        { "Stop",         Cmd::Stop        }, 
+        { "StartIdent",   Cmd::StartIdent  },
+        { "Stop",         Cmd::Stop        },
     };
 
     uint8_t buf[16] {};
-    if (uart_.Read(buf, sizeof(buf) - 1) == 0) 
+    if (uart_.Read(buf, sizeof(buf) - 1) == 0)
         return;
 
     for (const auto& e : kCmds)
     {
-        if (strcmp((const char*)buf, e.name) == 0) { 
-            active_cmd_ = e.id; 
-            break; 
+        if (strcmp((const char*)buf, e.name) == 0) {
+            active_cmd_ = e.id;
+            break;
         }
     }
-}
-
-/**
- * @brief 将当前温度推入滑动窗口的环形缓冲区
- *
- * @param temp_c 当前温度 (°C)
- */
-void Identifier::PushWin(float temp_c)
-{
-    win_.buf[win_.head] = temp_c;
-    win_.head = (win_.head + 1) % kWinSamples;
-    if (win_.cnt < kWinSamples) win_.cnt++;
-    win_.prev_c = temp_c;
-}
-
-/**
- * @brief 清空滑动窗口缓存
- */
-void Identifier::ResetWindow()
-{
-    win_.head = 0; win_.cnt = 0; win_.prev_c = 0.0f;
 }
 
 /**
@@ -246,8 +165,7 @@ void Identifier::Reset()
 {
     duty_       = kMinDuty;
     last_cycle_ = 0;
-    pert_cnt_   = 0;
-    ResetWindow();
+    stable_.Reset();
 }
 
 /**
@@ -277,6 +195,8 @@ void Identifier::IdentOpenLoop(float temperature)
 } // namespace ident
 
 #endif // CONFIG_IMU_IDENTIFICATION
+
+#pragma message "Compiling Modules/Imu/Drivers/Heater"
 
 namespace heater {
 

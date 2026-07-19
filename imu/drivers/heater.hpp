@@ -10,9 +10,16 @@
 
 #include "pid.hpp"
 #include "pwm.hpp"
-#include "uart.hpp"
 
-#ifdef CONFIG_IMU_IDENTIFICATION
+namespace {
+    static constexpr float kMaxDuty = 0.95f;
+    static constexpr float kMinDuty = 0.001f;      // PWM最小不能为0
+};
+
+#ifdef CONFIG_MOD_DEV_IMU_IDENT
+
+#include "stability.hpp"
+#include "uart.hpp"
 
 namespace ident {
 
@@ -36,37 +43,24 @@ public:
     Identifier() {}
     bool     Init();
     float    GetDuty()   const { return duty_; }
-    float    Perturb(float pid_duty, float temp_c);
     void     IdentOpenLoop(float temperature);
 
 private:
-    static constexpr uint32_t kWinSamples = 100;       // 滑动窗口帧数
-
-    struct {
-        float buf[kWinSamples] {};
-        uint32_t head   = 0;
-        uint32_t cnt    = 0;
-        float prev_c    = 0.0f;
-    } win_ {};
-
     UartDma     uart_ {};
     Cmd         active_cmd_ = Cmd::Stop;        // 当前执行的 PC 指令
     Cmd         prev_cmd_   = Cmd::Stop;
     uint32_t    last_cycle_ = 0;                // 上一帧 cycle 计数
-    uint32_t    pert_cnt_   = 0;                // 扰动计数器（帧数）
     float       duty_       = 0.0f;             // 阶段占空比
-    
+    stability::WinStable<100> stable_ {};       // 滑动窗口稳定判据
+
     void  Reset();
     void  CheckCmd();
     void  ExecOpenLoop(float temp_c);
-    void  ResetWindow();
-    void  PushWin(float temp_c);
-    bool  StableCheck(float temp_c, uint32_t dt_us);
 };
 
 } // namespace ident
 
-#endif // CONFIG_IMU_IDENTIFICATION
+#endif // CONFIG_MOD_DEV_IMU_IDENT
 
 namespace heater {
 

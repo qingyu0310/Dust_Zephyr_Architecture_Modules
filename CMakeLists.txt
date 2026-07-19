@@ -1,3 +1,35 @@
+if(CONFIG_MOD_DEV_IMU)
+	target_sources(app PRIVATE
+		${CMAKE_CURRENT_SOURCE_DIR}/imu/drivers/heater.cpp
+		${CMAKE_CURRENT_SOURCE_DIR}/imu/drivers/imu.cpp
+		${CMAKE_CURRENT_SOURCE_DIR}/imu/drivers/processor.cpp
+	)
+	target_include_directories(app PRIVATE
+		${CMAKE_CURRENT_SOURCE_DIR}/imu/devices
+		${CMAKE_CURRENT_SOURCE_DIR}/imu/drivers
+	)
+endif()
+
+if(CONFIG_MOD_DEV_IMU_BMI088)
+	target_sources(app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/imu/devices/bmi088/bmi088.cpp)
+	target_include_directories(app PRIVATE
+		${CMAKE_CURRENT_SOURCE_DIR}/imu/devices
+		${CMAKE_CURRENT_SOURCE_DIR}/imu/devices/bmi088
+	)
+endif()
+
+if(CONFIG_MOD_DEV_IMU_ICM42688P)
+	target_sources(app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/imu/devices/icm42688p/icm42688p.cpp)
+	target_include_directories(app PRIVATE
+		${CMAKE_CURRENT_SOURCE_DIR}/imu/devices
+		${CMAKE_CURRENT_SOURCE_DIR}/imu/devices/icm42688p
+	)
+endif()
+
+if(CONFIG_MOD_DEV_IMU_IDENT)
+	target_sources(app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/imu/drivers/heater.cpp)
+endif()
+
 if(CONFIG_MOD_DEV_MOTOR_DJI)
 	target_sources(app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/motors/dji/dji_c6xx.cpp)
 	target_include_directories(app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/motors/dji)
@@ -15,8 +47,8 @@ endif()
 
 if(CONFIG_MOD_DEV_REMOTE)
 	target_sources(app PRIVATE
-		${CMAKE_CURRENT_SOURCE_DIR}/remotes/remote.cpp
 		${CMAKE_CURRENT_SOURCE_DIR}/remotes/dr16/dr16.cpp
+		${CMAKE_CURRENT_SOURCE_DIR}/remotes/remote.cpp
 		${CMAKE_CURRENT_SOURCE_DIR}/remotes/vt12/vt12.cpp
 		${CMAKE_CURRENT_SOURCE_DIR}/remotes/vt13/vt13.cpp
 	)
@@ -25,33 +57,5 @@ if(CONFIG_MOD_DEV_REMOTE)
 		${CMAKE_CURRENT_SOURCE_DIR}/remotes/dr16
 		${CMAKE_CURRENT_SOURCE_DIR}/remotes/vt12
 		${CMAKE_CURRENT_SOURCE_DIR}/remotes/vt13
-	)
-endif()
-
-if(CONFIG_MOD_DEV_IMU)
-	target_sources(app PRIVATE
-		${CMAKE_CURRENT_SOURCE_DIR}/imu/drivers/imu.cpp
-		${CMAKE_CURRENT_SOURCE_DIR}/imu/drivers/heater.cpp
-		${CMAKE_CURRENT_SOURCE_DIR}/imu/drivers/processor.cpp
-	)
-	target_include_directories(app PRIVATE
-		${CMAKE_CURRENT_SOURCE_DIR}/imu/drivers
-		${CMAKE_CURRENT_SOURCE_DIR}/imu/devices
-	)
-endif()
-
-if(CONFIG_MOD_DEV_IMU_BMI088)
-	target_sources(app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/imu/devices/bmi088/bmi088.cpp)
-	target_include_directories(app PRIVATE
-		${CMAKE_CURRENT_SOURCE_DIR}/imu/devices
-		${CMAKE_CURRENT_SOURCE_DIR}/imu/devices/bmi088
-	)
-endif()
-
-if(CONFIG_MOD_DEV_IMU_ICM42688P)
-	target_sources(app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/imu/devices/icm42688p/icm42688p.cpp)
-	target_include_directories(app PRIVATE
-		${CMAKE_CURRENT_SOURCE_DIR}/imu/devices
-		${CMAKE_CURRENT_SOURCE_DIR}/imu/devices/icm42688p
 	)
 endif()

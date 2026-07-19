@@ -161,10 +161,10 @@ void ImuManager::Start(uint8_t prio)
  */
 bool ImuManager::Preheat()
 {
-    constexpr float    kTargetTemp  = 40.0f;
-    constexpr float    kStableTol   = 0.5f;
-    constexpr uint32_t kStableCnt   = 500;
-    constexpr uint32_t kWaitUs      = 1000;
+    constexpr float    kTargetTemp  = 40.0f;            // 预热目标温度 (°C)
+    constexpr float    kStableTol   = 0.5f;             // 稳定温度容限 (°C)
+    constexpr uint32_t kStableCnt   = 500;              // 持续稳定帧数
+    constexpr uint32_t kWaitUs      = 1000;             // 采样间隔 (µs)
 
     log_timer_.SetPeriod(10);
 
