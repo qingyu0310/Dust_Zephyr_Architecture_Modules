@@ -14,6 +14,8 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 
+#pragma message "Compiling Modules/Imu/Devices/BMI088"
+
 LOG_MODULE_REGISTER(bmi088, LOG_LEVEL_INF);
 
 namespace bmi088 {

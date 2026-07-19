@@ -8,6 +8,8 @@
 
 #pragma once
 
+#pragma message "Compiling Modules/Imu/Devices/DeviceLayer"
+
 #include <math.h>
 #include <stdint.h>
 #include <zephyr/kernel.h>

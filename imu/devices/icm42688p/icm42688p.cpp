@@ -14,6 +14,8 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 
+#pragma message "Compiling Modules/Imu/Devices/ICM42688P"
+
 LOG_MODULE_REGISTER(icm42688p, LOG_LEVEL_INF);
 
 namespace icm42688p {

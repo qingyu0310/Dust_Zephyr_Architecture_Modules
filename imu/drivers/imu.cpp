@@ -7,7 +7,6 @@
  */
 
 #include "imu.hpp"
-#include "zephyr/sys/printk.h"
 #include <zephyr/kernel.h>
 #include <zephyr/devicetree.h>
 #include <zephyr/logging/log.h>
@@ -19,7 +18,7 @@
 #include "icm42688p/icm42688p.hpp"
 #endif
 
-#pragma message "Compiling Modules/Imu"
+#pragma message "Compiling Modules/Imu/Drivers/Imu"
 
 LOG_MODULE_REGISTER(imu, LOG_LEVEL_INF);
 
@@ -66,19 +65,19 @@ bool ImuManager::SelectSource()
 {
 #if CONFIG_MOD_DEV_IMU_ICM42688P
 {
-    #pragma  message "Select IMU driver: ICM42688P"
+#pragma  message "Select IMU driver: ICM42688P"
     source_ = &icm42688p::Instance();
     return source_ != nullptr && RegisterSourceFromDevicetree(icm42688p::RegisterFromDevicetree);
 }
 #elif CONFIG_MOD_DEV_IMU_BMI088
 {
-    #pragma message "Select IMU driver: BMI088"
+#pragma message "Select IMU driver: BMI088"
     source_ = &bmi088::Instance();
     return source_ != nullptr && RegisterSourceFromDevicetree(bmi088::RegisterFromDevicetree);
 }
 #else
 {
-    #warning "No IMU driver selected"
+#warning "No IMU driver selected"
     return false;
 }
 #endif
@@ -112,11 +111,26 @@ void ImuManager::Init(ImuStartMode mode)
         LOG_ERR("heater init failed");
         return;
     }
+    heater_.SetMode(heater::Mode::Normal);
 
-    if (mode == ImuStartMode::AutoCalib && !Preheat()) {
-        LOG_ERR("calibration failed");
-        return;
+    // Preheat();
+    LOG_INF("start preheat");
+
+    if (mode == ImuStartMode::AutoCalib)
+    {
+        if (!source_->Calibrate()) { 
+            LOG_ERR("calibrate failed"); 
+            return; 
+        }
+        LOG_INF("calibrate done");
     }
+#ifdef CONFIG_IMU_IDENTIFICATION
+    else if (mode == ImuStartMode::OpenIdent)
+    {
+        heater_.SetMode(heater::Mode::OpenIdent);
+        LOG_INF("open_ident_start");
+    }
+#endif
 
     attitude_.Init();
     ready_ = true;
@@ -152,8 +166,12 @@ bool ImuManager::Preheat()
     constexpr uint32_t kStableCnt   = 500;
     constexpr uint32_t kWaitUs      = 1000;
 
+    log_timer_.SetPeriod(10);
+
     while (true)
     {
+        log_timer_.Update();
+
         if (source_ == nullptr || !source_->Read(sample_)) {
             k_busy_wait(kWaitUs);
             continue;
@@ -163,6 +181,10 @@ bool ImuManager::Preheat()
         if (heater_.IsStable(sample_.temp, kTargetTemp, kStableTol, kStableCnt)) {
             return true;
         }
+
+        log_timer_.Clock([&](){
+            LOG_INF("%f,%f", (double)sample_.temp, (double)heater_.GetDuty());
+        });
 
         k_busy_wait(kWaitUs);
     }
@@ -187,6 +209,8 @@ void ImuManager::Task()
         return (delta_ns == 0) ? sample_.dt : static_cast<float>(delta_ns) * 1.0e-9f;
     };
 
+    log_timer_.SetPeriod(10);
+
     for (;;)
     {
         log_timer_.Update();
@@ -204,7 +228,8 @@ void ImuManager::Task()
         }
 
         log_timer_.Clock([&](){
-            printk("%f,%f,%f\n", (double)pub_.roll, (double)pub_.pitch, (double)pub_.yaw);
+            // LOG_INF("%f,%f,%f", (double)pub_.roll, (double)pub_.pitch, (double)pub_.yaw);
+            // LOG_INF("%f,%f", (double)sample_.temp, (double)heater_.GetDuty());
         });
 
         k_msleep(1);

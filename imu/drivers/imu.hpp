@@ -23,7 +23,7 @@ enum class ImuStartMode : uint8_t
 {
     Normal      = 0,        // 正常启动
     AutoCalib   = 1,        // 自动校准
-    AutoIdent   = 2,        // 系统辨识
+    OpenIdent   = 2,        // 开环辨识
 };
 
 class ImuManager final
@@ -34,16 +34,16 @@ public:
     bool IsReady() const { return ready_; }
 
 private:
-    Source                      *source_     = nullptr;
-    Sample                       sample_     {};
-    attitude::Processor          attitude_   {};
-    heater::Heater               heater_     {};
+    Source                  *source_    = nullptr;
+    Sample                  sample_     {};
+    attitude::Processor     attitude_   {};
+    heater::Heater          heater_     {};
 
-    Timer                        log_timer_  {1};
-    topic::imu_to::Message       pub_        {};
+    Timer                   log_timer_  {10};
+    topic::imu_to::Message  pub_        {};
     
-    Thread<4096>                 thread_     {};
-    bool                         ready_      = false;
+    Thread<4096>            thread_     {};
+    bool                    ready_      = false;
 
     void Task();
 
