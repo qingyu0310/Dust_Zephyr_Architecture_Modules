@@ -37,6 +37,7 @@ config MOD_DEV_IMU
     select DEV_PWM
     select CTL_PID
     select CTL_TIMER
+    select ID_STABILITY
     help
         IMU source decoupling, attitude EKF and zbus publish layer.
 

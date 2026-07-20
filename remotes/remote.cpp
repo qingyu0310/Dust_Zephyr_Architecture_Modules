@@ -42,7 +42,7 @@ static constexpr Remote::Protocol kProtocolTable[] {
  * @param type 固定协议类型，或 RemoteType::Auto。
  * @param uart RX 数据流，通过 rx_sem_ 唤醒本线程。
  */
-void Remote::Init(RemoteType type, RxStream &uart)
+bool Remote::Init(RemoteType type, RxStream &uart)
 {
     configured_type_ = type;
     active_type_     = RemoteType::None;
@@ -53,6 +53,8 @@ void Remote::Init(RemoteType type, RxStream &uart)
     InitFrameSizeRange();
     GetProcessFunc();
     ready_ = true;
+
+    return true;
 }
 
 /**
@@ -60,13 +62,14 @@ void Remote::Init(RemoteType type, RxStream &uart)
  *
  * @param prio Zephyr 线程优先级。
  */
-void Remote::Start(uint8_t prio)
+bool Remote::Start(uint8_t prio)
 {
     if (!ready_) {
-        return;
+        return false;
     }
 
     thread_.Start(TaskEntry, prio, this);
+    return true;
 }
 
 /**
@@ -138,8 +141,8 @@ void Remote::GetProcessFunc()
 void Remote::ResetDetect()
 {
     proto_ = {};
-    active_type_ = RemoteType::None;
-    detect_state_ = DetectState::Detecting;
+    active_type_    = RemoteType::None;
+    detect_state_   = DetectState::Detecting;
     fail_count_ = 0;
 
     for (uint8_t& hit : hit_count_) {
@@ -354,7 +357,8 @@ void Remote::Task()
         if (k_sem_take(&rx_sem_, K_MSEC(50)) == 0) 
         {
             uint8_t tmp[32];
-            while (true) {
+            while (true) 
+            {
                 uint16_t n = uart_->Read(tmp, sizeof(tmp));
                 if (n == 0) {
                     break;

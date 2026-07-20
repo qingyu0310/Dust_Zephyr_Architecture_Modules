@@ -9,7 +9,6 @@
 #include "heater.hpp"
 #include <algorithm>
 #include <cmath>
-#include <cstdint>
 #include <cstring>
 #include <zephyr/devicetree.h>
 #include <zephyr/kernel.h>
@@ -22,101 +21,164 @@
 
 LOG_MODULE_REGISTER(ident, LOG_LEVEL_INF);
 
+namespace {
+    static constexpr float kMaxDuty = 0.95f;
+    static constexpr float kMinDuty = 0.001f;        // PWM最小不能为0
+    static constexpr float kBaseC   = 38.0f;
+    static constexpr float kBaseTol = 0.10f;
+
+    static constexpr alg::pid::Pid::Config kPidConfig {
+        .kp = 0.22f, 
+        .ki = 0.05f, 
+        .kd = 0.005f,
+        .iOutMax = 0.5f, 
+        .outMax = kMaxDuty, 
+        .dt = 0.001f,
+    };
+};
+
 namespace ident {
 
 /**
- * @brief 主更新函数，每帧调用
+ * @brief 辨识主循环（公共部分）
  *
- * 推进辨识状态机：Cooldown → Heating → Finished。
- * 超温时直接切 SafetyStop。
- * 状态切换时输出事件行，每帧输出采样行供 PC 采集。
+ * 每帧测量时间、检查超温、处理 Finished→Cooldown 复位，
+ * 然后根据 cmd 分发到 OpenLoop / ClosedLoop。
  *
- * @param temp_c  当前温度 (°C)
- * @param t_us    当前 MCU 时间 (µs)
- * @param dt_us   与上一帧的时间间隔 (µs)
- * @return Event  当前帧的事件（None/StepStart/StageEnd/Finished/SafetyStop）
+ * @param temperature 当前温度 (°C)
+ * @param cmd         PC 下发的指令
  */
-void Identifier::ExecOpenLoop(float temp_c)
+void Identifier::ExecLoop(float temperature, Cmd cmd)
 {
     constexpr float     kOverTempC  = 80.0f;
-    constexpr uint16_t  kNumStages  = sizeof(kDutySeq) / sizeof(kDutySeq[0]);
 
-    static OpenStage    state       = OpenStage::Finished;    // 开环状态机阶段
-    static uint8_t      stage       = 0;                      // 当前阶梯序号
-    static uint32_t     seq         = 0;                      // 采样帧序号
+    static IdentStage   state       = IdentStage::Finished;
+    static uint8_t      stage       = 0;
+    static uint32_t     seq         = 0;
 
     const uint32_t      now         =  k_cycle_get_32();
     const uint64_t      t_us        =  k_cyc_to_ns_floor64(now) / 1000;
     const uint32_t      dt_us       =  (last_cycle_ == 0) ? 1000 : (uint32_t)(k_cyc_to_ns_floor64(now - last_cycle_) / 1000);
 
-    if (temp_c > kOverTempC) {
+    if (temperature > kOverTempC) {
         duty_ = kMinDuty;
-        state = OpenStage::SafetyStop;
+        state = IdentStage::SafetyStop;
         LOG_INF("Safety Stop");
         return;
     }
 
-    // Finished → Cooldown：复位内部状态后等待温度降至基线
-    if (state == OpenStage::Finished)
-    {
-        state           = OpenStage::Cooldown;
-        stage           = 0;
-        seq             = 0;
+    if (state == IdentStage::Finished) {
+        state = IdentStage::Cooldown;
+        stage = 0;
+        seq   = 0;
         Reset();
     }
 
     LOG_INF("seq=%u,t_us=%llu,dt_us=%u,stage=%u,state=%u,temp_c=%.3f,duty=%.3f",
                (unsigned)++seq, (unsigned long long)t_us, (unsigned)dt_us,
-               (unsigned)stage, (unsigned)state, (double)temp_c, (double)duty_);
+               (unsigned)stage, (unsigned)state, (double)temperature, (double)duty_);
 
-    switch (state)
+    if (cmd == Cmd::OpenIdent) {
+        OpenLoop(temperature, dt_us, state, stage);
+    } 
+    else if (cmd == Cmd::ClosedIdent) {
+        ClosedLoop(temperature, dt_us, state);
+    }
+
+    last_cycle_ = now;
+}
+
+/**
+ * @brief 开环辨识状态机
+ *
+ * Cooldown → 温度降到基线后开始阶梯加热；
+ * Heating → 每级 duty 稳定后跳下一级，全部完成后置 Finished。
+ *
+ * @param temperature 当前温度 (°C)
+ * @param dt_us       与上一帧的时间间隔 (µs)
+ * @param state       状态（由 ExecLoop 维护）
+ * @param stage       当前阶梯序号
+ */
+void Identifier::OpenLoop(float temperature, uint32_t dt_us, IdentStage& state, uint8_t& stage)
+{
+    constexpr uint16_t kNumStages = sizeof(kDutySeq) / sizeof(kDutySeq[0]);
+
+    switch (state) 
     {
-        case OpenStage::Cooldown:
+        case IdentStage::Cooldown: 
         {
-            constexpr float kBaselineTempC  = 38.0f;            // 基线温度阈值 (°C)
-            constexpr float kBaselineTol    = 0.2f;             // 基线温度容限 (°C)
-
-            if (temp_c < kBaselineTempC) {
-                state = OpenStage::Heating;
+            if (temperature < kBaseC || (temperature <= kBaseC + kBaseTol && stable_.Check(temperature, dt_us * 1e-6f))) {
+                state = IdentStage::Heating;
                 duty_ = kDutySeq[0];
                 stable_.Reset();
                 LOG_INF("Cooldown Done");
             }
-            else if (temp_c <= kBaselineTempC + kBaselineTol && stable_.Check(temp_c, dt_us * 1e-6f)) {
-                state = OpenStage::Heating;
-                duty_ = kDutySeq[0];
+        break;
+    }
+    case IdentStage::Heating: 
+    {
+        if (stable_.Check(temperature, dt_us * 1e-6f)) 
+        {
+            if (++stage < kNumStages) {
+                duty_ = kDutySeq[stage];
+                stable_.Reset();
+                LOG_INF("Stage Done");
+            }
+            else {
+                duty_ = kMinDuty;
+                state = IdentStage::Finished;
+                LOG_INF("Finished");
+            }
+        }
+        break;
+    }
+    default:
+        duty_ = kMinDuty;
+        break;
+    }
+}
+
+/**
+ * @brief 闭环辨识状态机
+ *
+ * Cooldown → 温度降到基线后开始 PID 控温；
+ * Heating → 持续 PID 控温 + 数据采集，不自动切换阶段。
+ * 需要由 PC 下发 Stop 指令停止。
+ *
+ * @param temperature 当前温度 (°C)
+ * @param dt_us       与上一帧的时间间隔 (µs)
+ * @param state       状态（由 ExecLoop 维护）
+ */
+void Identifier::ClosedLoop(float temperature, uint32_t dt_us, IdentStage& state)
+{
+    switch (state)
+    {
+        case IdentStage::Cooldown: 
+        {
+            if (temperature < kBaseC || (temperature <= kBaseC + kBaseTol && stable_.Check(temperature, dt_us * 1e-6f))) {
+                state = IdentStage::Heating;
                 stable_.Reset();
                 LOG_INF("Cooldown Done");
             }
             break;
         }
-        case OpenStage::Heating:
+        case IdentStage::Heating:
         {
-            if (stable_.Check(temp_c, dt_us * 1e-6f))
-            {
-                if (++stage < kNumStages) {
-                    duty_ = kDutySeq[stage];
-                    stable_.Reset();
-                    LOG_INF("Stage Done");
-                }
-                else {
-                    duty_ = kMinDuty;
-                    state = OpenStage::Finished;
-                    LOG_INF("Finished");
-                }
-            }
+            duty_ = pid_.Calc(kTargetTemp, temperature);
+            duty_ = std::clamp(duty_, kMinDuty, kMaxDuty);
             break;
         }
         default:
             duty_ = kMinDuty;
             break;
     }
-    
-    last_cycle_    = now;
 }
 
 /**
- * @brief 读取 UART 指令
+ * @brief 读取 UART 指令并更新 active_cmd_
+ *
+ * 非阻塞读取 UART 缓冲，匹配命令表后更新当前指令。
+ * 不匹配的输入静默丢弃。
  */
 void Identifier::CheckCmd()
 {
@@ -124,8 +186,9 @@ void Identifier::CheckCmd()
         const char* name;
         Cmd id;
     }  constexpr kCmds[]  {                                       // PC下发指令
-        { "StartIdent",   Cmd::StartIdent  },
-        { "Stop",         Cmd::Stop        },
+        { "OpenIdent",   Cmd::OpenIdent    },
+        { "ClosedIdent", Cmd::ClosedIdent  },
+        { "Stop",        Cmd::StopIdent    },
     };
 
     uint8_t buf[16] {};
@@ -151,6 +214,8 @@ bool Identifier::Init()
     cfg.buf_size   = 256;
     cfg.rx_timeout = 1000;
 
+    pid_.Init(kPidConfig);
+
     if (!uart_.Init(DEVICE_DT_GET(DT_NODELABEL(uart3)), cfg)) {
         LOG_ERR("uart3 init failed");
         return false;
@@ -175,21 +240,21 @@ void Identifier::Reset()
  *
  * @param temperature 当前温度 (°C)
  */
-void Identifier::IdentOpenLoop(float temperature)
+void Identifier::IdentLoop(float temperature)
 {
     CheckCmd();
 
-    if (active_cmd_ == Cmd::Stop) {
+    if (active_cmd_ == Cmd::StopIdent) {
         duty_ = kMinDuty;
         return;
     }
 
-    if (prev_cmd_ == Cmd::Stop && active_cmd_ != Cmd::Stop) {
+    if (prev_cmd_ == Cmd::StopIdent && active_cmd_ != Cmd::StopIdent) {
         LOG_INF("Ident Starting");
     }
     prev_cmd_ = active_cmd_;
 
-    ExecOpenLoop(temperature);
+    ExecLoop(temperature, active_cmd_);
 }
 
 } // namespace ident
@@ -214,17 +279,9 @@ bool Heater::Init()
     static const pwm_dt_spec heater_pwm = PWM_DT_SPEC_GET(DT_ALIAS(imu_pwm));
     if (!heater_pwm_.init(heater_pwm)) return false;
 
-    constexpr alg::pid::Pid::Config kPidConfig {
-        .kp = 0.13f, 
-        .ki = 0.03f, 
-        .kd = 0.0f,
-        .iOutMax = 0.5f, 
-        .outMax = kMaxDuty, 
-        .dt = 0.001f,
-    };
     pid_.Init(kPidConfig);
 
-    duty_ = 0.0f;
+    duty_ = kMinDuty;
     initialized_ = true;
 
 #ifdef CONFIG_IMU_IDENTIFICATION
@@ -251,63 +308,17 @@ void Heater::Update(float temperature)
     if (mode_ == Mode::Normal)
     {
         duty_ = pid_.Calc(kTargetTemp, temperature);
-        duty_ = std::clamp(duty_, kMinDuty, kMaxDuty);
     }
 #ifdef CONFIG_IMU_IDENTIFICATION
-    else if (mode_ == Mode::OpenIdent)
+    else if (mode_ == Mode::AutoIdent)
     {
-        ident_.IdentOpenLoop(temperature);
+        ident_.IdentLoop(temperature);
         duty_ = ident_.GetDuty();
     }
 #endif // CONFIG_IMU_IDENTIFICATION
 
+    duty_ = std::clamp(duty_, kMinDuty, kMaxDuty);
     (void)heater_pwm_.SetDuty(duty_);
-}
-
-/**
- * @brief 单帧稳定判据：检查偏差与瞬时斜率
- *
- * @param temperature 当前温度 (°C)
- * @param reference   参考温度 (°C)
- * @param tolerance   允许偏差 (°C)
- * @param dt          与上一帧的时间间隔 (s)
- * @return true  偏差和斜率均在限内
- */
-bool Heater::StableSample(float temperature, float reference, float tolerance, float dt)
-{
-    if (std::abs(temperature - reference) > tolerance) {
-        prev_temp_ = temperature;
-        return false;
-    }
-    if (prev_temp_ == 0.0f) {
-        prev_temp_ = temperature;
-        return false;
-    }
-    const float slope = (temperature - prev_temp_) / dt;
-    prev_temp_ = temperature;
-    return std::abs(slope) <= kSlopeLimit;
-}
-
-/**
- * @brief 连续稳定判据：累计 StableSample 通过帧数
- *
- * 内部计数连续达 required 帧即判稳，不满足则重置。
- *
- * @param temperature 当前温度 (°C)
- * @param reference   参考温度 (°C)
- * @param tolerance   允许偏差 (°C)
- * @param required    连续稳定最少帧数
- * @param dt          采样间隔 (s)，传给 StableSample
- * @return true  连续 >= required 帧满足单帧判据
- */
-bool Heater::IsStable(float temperature, float reference, float tolerance, uint32_t required, float dt)
-{
-    if (StableSample(temperature, reference, tolerance, dt)) {
-        stable_count_++;
-    } else {
-        stable_count_ = 0;
-    }
-    return stable_count_ >= required;
 }
 
 } // namespace heater

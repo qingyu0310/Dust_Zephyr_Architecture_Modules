@@ -23,7 +23,7 @@ enum class ImuStartMode : uint8_t
 {
     Normal      = 0,        // 正常启动
     AutoCalib   = 1,        // 自动校准
-    OpenIdent   = 2,        // 开环辨识
+    AutoIdent   = 2,        // 自动辨识
 };
 
 class ImuManager final

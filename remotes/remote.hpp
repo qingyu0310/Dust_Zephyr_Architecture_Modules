@@ -45,9 +45,8 @@ public:
         Locked,
     };
 
-    void Init(RemoteType type, RxStream &uart);
-    void Start(uint8_t prio = 5);
-    bool IsReady() const { return ready_; }
+    bool Init(RemoteType type, RxStream &uart);
+    bool Start(uint8_t prio = 5);
 
 private:
     Thread<1024 * 8> thread_ {};

@@ -7,6 +7,7 @@
  */
 
 #include "imu.hpp"
+#include "heater.hpp"
 #include <zephyr/kernel.h>
 #include <zephyr/devicetree.h>
 #include <zephyr/logging/log.h>
@@ -114,8 +115,8 @@ bool ImuManager::Init(ImuStartMode mode)
     }
     heater_.SetMode(heater::Mode::Normal);
 
-    // Preheat();
     // LOG_INF("start preheat");
+    // Preheat();
 
     if (mode == ImuStartMode::AutoCalib)
     {
@@ -126,12 +127,12 @@ bool ImuManager::Init(ImuStartMode mode)
         LOG_INF("calibrate done");
     }
 #ifdef CONFIG_IMU_IDENTIFICATION
-    else if (mode == ImuStartMode::OpenIdent)
+    else if (mode == ImuStartMode::AutoIdent)
     {
-        heater_.SetMode(heater::Mode::OpenIdent);
-        LOG_INF("open_ident_start");
+        heater_.SetMode(heater::Mode::AutoIdent);
+        LOG_INF("set autoident mode");
     }
-#endif
+#endif // CONFIG_IMU_IDENTIFICATION
 
     attitude_.Init();
 
@@ -154,45 +155,6 @@ bool ImuManager::Start(uint8_t prio)
     thread_.Start(TaskEntry, prio, this);
 
     return true;
-}
-
-/**
- * @brief 等待加热器达到目标温度
- *
- * 循环采集温度样本，直到加热器稳定在目标温度附近。
- *
- * @return true  温度稳定
- * @return false 数据源失效
- */
-bool ImuManager::Preheat()
-{
-    constexpr float    kTargetTemp  = 40.0f;            // 预热目标温度 (°C)
-    constexpr float    kStableTol   = 0.5f;             // 稳定温度容限 (°C)
-    constexpr uint32_t kStableCnt   = 500;              // 持续稳定帧数
-    constexpr uint32_t kWaitUs      = 1000;             // 采样间隔 (µs)
-
-    log_timer_.SetPeriod(10);
-
-    while (true)
-    {
-        log_timer_.Update();
-
-        if (source_ == nullptr || !source_->Read(sample_)) {
-            k_busy_wait(kWaitUs);
-            continue;
-        }
-
-        heater_.Update(sample_.temp);
-        if (heater_.IsStable(sample_.temp, kTargetTemp, kStableTol, kStableCnt)) {
-            return true;
-        }
-
-        log_timer_.Clock([&](){
-            LOG_INF("%f,%f", (double)sample_.temp, (double)heater_.GetDuty());
-        });
-
-        k_busy_wait(kWaitUs);
-    }
 }
 
 /**
@@ -232,12 +194,54 @@ void ImuManager::Task()
             // zbus_chan_pub(&pub_imu_to, &pub_, K_MSEC(1));
         }
 
+        log_timer_.Clock([&]()
+        {
+            if (heater_.GetMode() == heater::Mode::Normal)
+            {
+                // LOG_INF("%f,%f,%f", (double)pub_.roll, (double)pub_.pitch, (double)pub_.yaw);
+                LOG_INF("%f,%f", (double)sample_.temp, (double)heater_.GetDuty());
+            }
+        });
+        
+        k_msleep(1);
+    }
+}
+
+/**
+ * @brief 等待加热器达到目标温度
+ *
+ * 循环采集温度样本，直到加热器稳定在目标温度附近。
+ *
+ * @return true  温度稳定
+ * @return false 数据源失效
+ */
+bool ImuManager::Preheat()
+{
+    constexpr uint32_t kWaitUs = 1000;             // 采样间隔 (µs)
+
+    log_timer_.SetPeriod(10);
+
+    while (true)
+    {
+        log_timer_.Update();
+
+        if (source_ == nullptr || !source_->Read(sample_)) {
+            k_busy_wait(kWaitUs);
+            continue;
+        }
+
+        heater_.Update(sample_.temp);
+        if (heater_.stable_.Check(kTargetTemp, sample_.temp, kWaitUs * 1e-6f,
+                                  heater_.kSlopeLimit, heater_.kNoiseLimit)) {
+            return true;
+        }
+
+        // 预热打印，用于判断是否被稳定判据卡住
         log_timer_.Clock([&](){
-            // LOG_INF("%f,%f,%f", (double)pub_.roll, (double)pub_.pitch, (double)pub_.yaw);
-            // LOG_INF("%f,%f", (double)sample_.temp, (double)heater_.GetDuty());
+            LOG_INF("%f,%f", (double)sample_.temp, (double)heater_.GetDuty());
         });
 
-        k_msleep(1);
+        k_busy_wait(kWaitUs);
     }
 }
 
