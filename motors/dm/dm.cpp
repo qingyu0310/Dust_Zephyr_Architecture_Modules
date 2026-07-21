@@ -38,6 +38,7 @@
 
 #include "dm.hpp"
 #include <cstdint>
+#include <algorithm>
 
 #pragma message "Compiling Modules/Motors DM"
 
@@ -116,7 +117,9 @@ void DmMotor::CanCpltRxCallback(uint8_t* buffer)
     const uint8_t* data  =  buffer;
 
     const uint8_t  id    =  data[0] & 0x0F;      // ID 在低半字节
+
     if (id != cfg_.can_id) return;
+    
 
     const uint8_t  err   =   data[0] >> 4;        // 错误状态在高半字节
     const uint16_t enc   = (static_cast<uint16_t>(data[1]) << 8) | data[2];           // 16bit 编码器
@@ -135,16 +138,15 @@ void DmMotor::CanCpltRxCallback(uint8_t* buffer)
 
     /* seqlock 写锁：允许其他中断，线程读到冲突时会自旋重试 */
     atomic_inc(&seq_);
-    now_rad_   = static_cast<float>(total_encoder_) / static_cast<float>((1 << 16) - 1)
-               * cfg_.pos_max * 2.0f;                   // 缩放到 [-pos_max, +pos_max]
+    now_rad_   = static_cast<float>(total_encoder_) / static_cast<float>((1 << 16) - 1) * cfg_.PMAX * 2.0f;  // 缩放到 [-pos_max, +pos_max]
     now_ang_   = now_rad_ * kRad2Deg;                   // rad → °
 
-    const float omega_motor = uint_to_float(v_int, -cfg_.vel_max, cfg_.vel_max, 12);
+    const float  omega_motor = uint_to_float(v_int, -cfg_.VMAX, cfg_.VMAX, 12);
     now_omg_   = omega_motor;                           // 电机轴角速度 (rad/s)
-    const float omega_out   = (cfg_.gearbox_ratio != 0.0f) ? omega_motor / cfg_.gearbox_ratio : omega_motor;
-    now_vel_   = (cfg_.wheel_r != 0.0f) ? omega_out * cfg_.wheel_r * 0.5f : 0.0f;     // v = ω_out * r / 2  —— 差速单轮贡献
+    const float  omega_out   = (cfg_.gearbox_ratio != 0.0f) ? omega_motor / cfg_.gearbox_ratio : omega_motor;
+    now_vel_   = (cfg_.wheel_r != 0.0f) ? omega_out * cfg_.wheel_r * 0.5f : 0.0f;                            // v = ω_out * r / 2  —— 差速单轮贡献
 
-    now_tor_   = uint_to_float(t_int, -cfg_.tor_max, cfg_.tor_max, 12);
+    now_tor_   = uint_to_float(t_int, -cfg_.TMAX, cfg_.TMAX, 12);
     now_tmos_  = static_cast<float>(data[6]);
     now_tcoil_ = static_cast<float>(data[7]);
 
@@ -161,7 +163,7 @@ void DmMotor::CanCpltRxCallback(uint8_t* buffer)
  *
  * @param data 输出 8 字节 CAN 数据
  */
-void DmMotor::CtrlData(uint8_t (&data)[8])
+void DmMotor::PackCtrlFrame(uint8_t (&data)[8])
 {
     switch (cfg_.ctrl_met)
     {
@@ -171,11 +173,11 @@ void DmMotor::CtrlData(uint8_t (&data)[8])
             constexpr float kKpMin = 0.0f, kKpMax = 500.0f;
             constexpr float kKdMin = 0.0f, kKdMax = 5.0f;
 
-            const uint16_t pos_tmp = float_to_uint(ctrl.target_rad_, -cfg_.pos_max, cfg_.pos_max, 16);
-            const uint16_t vel_tmp = float_to_uint(ctrl.target_omg_, -cfg_.vel_max, cfg_.vel_max, 12);
-            const uint16_t kp_tmp  = float_to_uint(cfg_.kp,          kKpMin,        kKpMax,       12);
-            const uint16_t kd_tmp  = float_to_uint(cfg_.kd,          kKdMin,        kKdMax,       12);
-            const uint16_t tor_tmp = float_to_uint(ctrl.target_tor_, -cfg_.tor_max, cfg_.tor_max, 12);
+            const uint16_t pos_tmp = float_to_uint(ctrl.target_radian_, -cfg_.PMAX, cfg_.PMAX, 16);  // P_des 位置 rad
+            const uint16_t vel_tmp = float_to_uint(ctrl.target_omega_,  -cfg_.VMAX, cfg_.VMAX, 12);  // V_des 速度 rad/s
+            const uint16_t kp_tmp  = float_to_uint(cfg_.kp,             kKpMin,     kKpMax,    12);  // Kp   位置环比例系数
+            const uint16_t kd_tmp  = float_to_uint(cfg_.kd,             kKdMin,     kKdMax,    12);  // Kd   位置环微分系数
+            const uint16_t tor_tmp = float_to_uint(ctrl.target_torque_, -cfg_.TMAX, cfg_.TMAX, 12);  // T_ff 转矩 Nm
 
             data[0] =   pos_tmp >> 8;
             data[1] =   pos_tmp;
@@ -190,8 +192,8 @@ void DmMotor::CtrlData(uint8_t (&data)[8])
         }
         case ControlMethon::Pos:
         {
-            const uint8_t* pos_bytes = reinterpret_cast<const uint8_t*>(&ctrl.target_rad_);
-            const uint8_t* vel_bytes = reinterpret_cast<const uint8_t*>(&ctrl.target_omg_);
+            const uint8_t* pos_bytes = reinterpret_cast<const uint8_t*>(&ctrl.target_radian_);
+            const uint8_t* vel_bytes = reinterpret_cast<const uint8_t*>(&ctrl.target_omega_);
 
             data[0] = pos_bytes[0];
             data[1] = pos_bytes[1];
@@ -206,7 +208,7 @@ void DmMotor::CtrlData(uint8_t (&data)[8])
         }
         case ControlMethon::Spd:
         {
-            const uint8_t* vel_bytes = reinterpret_cast<const uint8_t*>(&ctrl.target_omg_);
+            const uint8_t* vel_bytes = reinterpret_cast<const uint8_t*>(&ctrl.target_omega_);
 
             data[0] = vel_bytes[0];
             data[1] = vel_bytes[1];
@@ -221,9 +223,10 @@ void DmMotor::CtrlData(uint8_t (&data)[8])
         }
         case ControlMethon::Psi:
         {
-            const uint8_t* pos_bytes = reinterpret_cast<const uint8_t*>(&ctrl.target_rad_);
-            uint16_t u16_vel = static_cast<uint16_t> (ctrl.target_omg_  * 100);                             // 100 为协议固定系数 vel单位为(rad/s)
-            uint16_t u16_cur = static_cast<uint16_t>((ctrl.target_tor_ / cfg_.tor_max) * 10000.0f);           // 转矩→标幺值×10000
+            const uint8_t* pos_bytes = reinterpret_cast<const uint8_t*>(&ctrl.target_radian_);
+            uint16_t u16_vel = static_cast<uint16_t>(ctrl.target_omega_   * 100.0f);                // v_des = 速度×100, uint16
+            float    cur    = (ctrl.target_torque_ / cfg_.TMAX) * 10000.0f;
+            uint16_t u16_cur = static_cast<uint16_t>(std::clamp(cur, 0.0f, 10000.0f));             // i_des, 截断 [0,10000]
 
             data[0] = pos_bytes[0];
             data[1] = pos_bytes[1];
@@ -240,28 +243,35 @@ void DmMotor::CtrlData(uint8_t (&data)[8])
 }
 
 /**
- * @brief 使能电机命令帧
+ * @brief 设置控制模式（写寄存器 0x0A，CAN ID 固定 0x7FF）
  *
  * @param data 输出 8 字节 CAN 数据
+ * @param mode 控制模式
  */
-void DmMotor::EnableData(uint8_t (&data)[8])
+void DmMotor::PackSetCtrlMode(uint8_t (&data)[8], CtrlModeVal mode)
 {
-    data[0] = 0xFF;
-    data[1] = 0xFF;
-    data[2] = 0xFF;
-    data[3] = 0xFF;
-    data[4] = 0xFF;
-    data[5] = 0xFF;
-    data[6] = 0xFF;
-    data[7] = 0xFC;             // DM 协议使能指令
+    constexpr uint8_t kReg = 0x0A;
+    const     uint32_t v = static_cast<uint32_t>(mode);
+    const     uint8_t id_l =  cfg_.can_id & 0xFF;
+    const     uint8_t id_h = (cfg_.can_id >> 8) & 0x07;
+
+    data[0] = id_l;
+    data[1] = id_h;
+    data[2] = 0x55;
+    data[3] = kReg;
+    data[4] =  v        & 0xFF;
+    data[5] = (v >> 8)  & 0xFF;
+    data[6] = (v >> 16) & 0xFF;
+    data[7] = (v >> 24) & 0xFF;
 }
 
 /**
- * @brief 失能电机命令帧
+ * @brief 命令帧（使能/失能/保存零点/清除错误）
  *
  * @param data 输出 8 字节 CAN 数据
+ * @param cmd  命令枚举
  */
-void DmMotor::DisableData(uint8_t (&data)[8])
+void DmMotor::PackCmdFrame(uint8_t (&data)[8], Cmd cmd)
 {
     data[0] = 0xFF;
     data[1] = 0xFF;
@@ -270,39 +280,5 @@ void DmMotor::DisableData(uint8_t (&data)[8])
     data[4] = 0xFF;
     data[5] = 0xFF;
     data[6] = 0xFF;
-    data[7] = 0xFD;             // DM 协议失能指令
-}
-
-/**
- * @brief 保存当前位置为零点命令帧
- *
- * @param data 输出 8 字节 CAN 数据
- */
-void DmMotor::SaveZeroData(uint8_t (&data)[8])
-{
-    data[0] = 0xFF;
-    data[1] = 0xFF;
-    data[2] = 0xFF;
-    data[3] = 0xFF;
-    data[4] = 0xFF;
-    data[5] = 0xFF;
-    data[6] = 0xFF;
-    data[7] = 0xFE;             // DM 协议保存零点指令
-}
-
-/**
- * @brief 清除电机错误命令帧
- *
- * @param data 输出 8 字节 CAN 数据
- */
-void DmMotor::ClearErrData(uint8_t (&data)[8])
-{
-    data[0] = 0xFF;
-    data[1] = 0xFF;
-    data[2] = 0xFF;
-    data[3] = 0xFF;
-    data[4] = 0xFF;
-    data[5] = 0xFF;
-    data[6] = 0xFF;
-    data[7] = 0xFB;             // DM 协议清除错误指令
+    data[7] = static_cast<uint8_t>(cmd);
 }

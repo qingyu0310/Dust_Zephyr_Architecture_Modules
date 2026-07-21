@@ -36,35 +36,38 @@ enum class ControlMethon : uint8_t
     Psi,                        // 力位控制模式
 };
 
-constexpr float kRad2Deg = 57.2957795f;          // 180° / π
-
+/**
+ * @brief DM 达妙电机驱动
+ *
+ * ## MIT 模式用法说明
+ *
+ * 1. kp=0, kd≠0 — 给定 v_des 实现匀速转动，存在静差，kd 过大会引起震荡
+ * 2. kp=0, kd=0 — 给定 t_ff 实现恒力矩输出；空转/轻载时若 t_ff 过大会持续加速
+ * 3. kp≠0, kd=0 — 位置控制时 kd 不能赋 0，否则震荡甚至失控
+ * 4. kp≠0, kd≠0 — 具体看官方文档
+ */
 class DmMotor final
 {
 public:
+    static constexpr float kRad2Deg = 57.2957795f;          // 180° / π
+
     struct Config  {
         ControlMethon ctrl_met  = ControlMethon::Mit;
 
-        // can_id: 发送给电机的控制帧ID
-        // master_id: 电机反馈帧的ID（建议 > can_id，多个电机各不相同，可提高控制频率）
-        uint16_t can_id     = 0x01;
-        uint16_t master_id  = 0x00;
+        uint16_t can_id     = 0x01;             // 发送给电机的控制帧 ID（TX）
+        uint16_t master_id  = 0x00;             // 电机反馈帧的 ID（RX），建议 ≠ can_id
 
         float gearbox_ratio = 10.f;             // 电机减速比 (J4310)
-        float enc_per_round = 8192;             // 编码器线数（每圈脉冲数）
         float wheel_r       = 0.1f;             // 车轮半径 (m)
 
-        float kp            = 0.0f;             // MIT刚度 [0, 500]
-        float kd            = 0.0f;             // MIT阻尼 [0, 5]
-        float pos_max       = 12.5f;            // 位置量程 ±12.5 rad
-        float vel_max       = 45.0f;            // 速度量程 ±45 rad/s
-        float tor_max       = 18.0f;            // 转矩量程 ±18 N*m
+        // 无 vel_kp/vel_kd——DM 协议只有位置环 Kp/Kd，无独立速度环系数
+        float kp            = 0.0f;             // 位置环比例系数 [0, 500]
+        float kd            = 0.0f;             // 位置环微分系数 [0, 5]
+
+        float PMAX          = 12.5f;            // 位置量程 ±12.5 rad
+        float VMAX          = 45.0f;            // 速度量程 ±45 rad/s
+        float TMAX          = 18.0f;            // 转矩量程 ±18 N*m
     };
-
-    void Init(Config cfg);
-
-    void PwrLossCheck();
-
-    void CanCpltRxCallback(uint8_t* buffer);
 
     /**
      * @brief 电机状态快照
@@ -74,7 +77,30 @@ public:
         DmErrorStatus err;
     };
 
-    /** @brief 批量读——seqlock 保护，一次拿到所有值的一致快照 */
+    enum class Cmd : uint8_t {
+        ClearErr = 0xFB,
+        Enable   = 0xFC,
+        Disable  = 0xFD,
+        SaveZero = 0xFE,
+    };
+
+    // 控制模式值（写寄存器 0x0A）
+    enum class CtrlModeVal : uint32_t {
+        Mit = 1,
+        Pos = 2,
+        Spd = 3,
+        Psi = 4,
+    };
+
+    void Init(Config cfg);
+
+    void PwrLossCheck();
+
+    void CanCpltRxCallback(uint8_t* buffer);
+
+    /**
+     * @brief 批量读——seqlock 保护，一次拿到所有值的一致快照
+     */
     Snapshot ReadAll() const
     {
         atomic_t seq;
@@ -94,48 +120,46 @@ public:
         return snap;
     }
 
-    void CtrlData     (uint8_t (&data)[8]);
-    void EnableData   (uint8_t (&data)[8]);
-    void DisableData  (uint8_t (&data)[8]);
-    void SaveZeroData (uint8_t (&data)[8]);
-    void ClearErrData (uint8_t (&data)[8]);
+    void PackCtrlFrame(uint8_t (&data)[8]);
+    void PackCmdFrame (uint8_t (&data)[8], Cmd cmd);
+    void PackSetCtrlMode(uint8_t (&data)[8], CtrlModeVal mode);
 
-    //--- 读取当前状态 ---
-    float GetNowRad()   const { return now_rad_;    }               // 电机轴位置 (rad)
-    float GetNowAng()   const { return now_ang_;    }               // 电机轴角度 (°)
-    float GetNowVel()   const { return now_vel_;    }               // 线速度 (m/s)
-    float GetNowOmg()   const { return now_omg_;    }               // 当前角速度 (rad/s)
-    float GetNowTor()   const { return now_tor_;    }               // 转矩 (N*m)
-    float GetNowTmos()  const { return now_tmos_;   }               // MOSFET 温度 (°C)
-    float GetNowTcoil() const { return now_tcoil_;  }               // 线圈温度 (°C)
-    uint16_t GetTxId()  const { return cfg_.can_id; }               // 控制帧CAN ID
-    DmErrorStatus GetNowErr() const { return now_err_; }            // 电机故障状态
+    // 读取当前状态
+    float GetNowRadian()      const { return now_rad_;    }         // 电机轴位置 (rad)
+    float GetNowAngle()       const { return now_ang_;    }         // 电机轴角度 (°)
+    float GetNowVelocity()    const { return now_vel_;    }         // 线速度 (m/s)
+    float GetNowOmega()       const { return now_omg_;    }         // 当前角速度 (rad/s)
+    float GetNowTorque()      const { return now_tor_;    }         // 转矩 (N*m)
+    float GetNowTmos()        const { return now_tmos_;   }         // MOSFET 温度 (°C)
+    float GetNowTcoil()       const { return now_tcoil_;  }         // 线圈温度 (°C)
+    uint16_t GetTxId()        const { return cfg_.can_id; }         // 控制帧CAN ID
+    DmErrorStatus GetNowErr() const { return now_err_;    }         // 电机故障状态
 
-    //--- 读取目标值 ---
-    float GetTargetRad()   const { return ctrl.target_rad_; }       // rad
-    float GetTargetAng()   const { return ctrl.target_ang_; }       // °
-    float GetTargetVel()   const { return ctrl.target_vel_; }       // m/s（线速度）
-    float GetTargetOmg()   const { return ctrl.target_omg_; }       // rad/s（角速度）
-    float GetTargetTor()   const { return ctrl.target_tor_; }       // N*m
+    // 读取目标值
+    float GetTargetRadian()   const { return ctrl.target_radian_;   }   // rad
+    float GetTargetAngle()    const { return ctrl.target_angle_;    }   // °
+    float GetTargetVelocity() const { return ctrl.target_velocity_; }   // m/s（线速度）
+    float GetTargetOmega()    const { return ctrl.target_omega_;    }   // rad/s（角速度）
+    float GetTargetTorque()   const { return ctrl.target_torque_;   }   // N*m
 
-    //--- 设定目标值 ---
-    // CtrlData 只认 rad / rad/s，其他单位自动转成协议值后再赋给 target_rad_ / target_omg_
+    // 设定目标值
+    // CtrlData 只认 rad / rad/s，其他单位自动转成协议值后再赋给 target_radian_ / target_omega_
     // Init() 之后调用（依赖 cfg_ 的 wheel_r / gearbox_ratio）
-    void SetTargetRad(float v)   { ctrl.target_rad_ = v; ctrl.target_ang_ = v * kRad2Deg; }
-    void SetTargetAng(float v)   { ctrl.target_ang_ = v; ctrl.target_rad_ = v / kRad2Deg; }
+    void SetTargetRadian(float v)   { ctrl.target_radian_ = v; ctrl.target_angle_ = v * kRad2Deg; }
+    void SetTargetAngle(float v)    { ctrl.target_angle_ = v; ctrl.target_radian_ = v / kRad2Deg; }
 
-    void SetTargetVel(float v)   {
-        ctrl.target_vel_ = v;
+    void SetTargetVelocity(float v) {
+        ctrl.target_velocity_ = v;
         if (cfg_.wheel_r != 0.0f)
-            ctrl.target_omg_ = v / (cfg_.wheel_r * 0.5f) * cfg_.gearbox_ratio;
+            ctrl.target_omega_ = v / (cfg_.wheel_r * 0.5f) * cfg_.gearbox_ratio;
     }
-    void SetTargetOmg(float v) {
-        ctrl.target_omg_ = v;
+    void SetTargetOmega(float v) {
+        ctrl.target_omega_ = v;
         if (cfg_.wheel_r != 0.0f)
-            ctrl.target_vel_ = v * cfg_.wheel_r * 0.5f / cfg_.gearbox_ratio;
+            ctrl.target_velocity_ = v * cfg_.wheel_r * 0.5f / cfg_.gearbox_ratio;
     }
 
-    void SetTargetTor(float v)   { ctrl.target_tor_ = v; }                     // N*m
+    void SetTargetTorque(float v)   { ctrl.target_torque_ = v; }               // N*m
 
 private:
     Config cfg_ {};
@@ -158,11 +182,11 @@ private:
 
     struct
     {
-        float target_rad_   = 0.0f;         // rad（控制协议所需的发送数据）
-        float target_ang_   = 0.0f;         // ° = rad × kRad2Deg
-        float target_vel_   = 0.0f;         // m/s = omg × wheel_r × 0.5 / gearbox_ratio
-        float target_omg_   = 0.0f;         // rad/s（控制协议所需的发送数据）
-        float target_tor_   = 0.0f;         // N*m
+        float target_radian_   = 0.0f;      // rad（控制协议所需的发送数据）
+        float target_angle_    = 0.0f;      // ° = rad × kRad2Deg
+        float target_velocity_ = 0.0f;      // m/s = omg × wheel_r × 0.5 / gearbox_ratio
+        float target_omega_    = 0.0f;      // rad/s（控制协议所需的发送数据）
+        float target_torque_   = 0.0f;      // N*m
     } ctrl;
 
     DmErrorStatus now_err_ = DmErrorStatus::Disable;    // 电机状态
