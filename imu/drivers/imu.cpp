@@ -113,7 +113,7 @@ bool ImuManager::Init(ImuStartMode mode)
         LOG_ERR("heater init failed");
         return false;
     }
-    heater_.SetMode(heater::Mode::Normal);
+    heater_.SetMode(heater::Mode::ClosedLoop);
 
     // LOG_INF("start preheat");
     // Preheat();
@@ -196,7 +196,7 @@ void ImuManager::Task()
 
         log_timer_.Clock([&]()
         {
-            if (heater_.GetMode() == heater::Mode::Normal)
+            if (heater_.GetMode() == heater::Mode::ClosedLoop)
             {
                 // LOG_INF("%f,%f,%f", (double)pub_.roll, (double)pub_.pitch, (double)pub_.yaw);
                 LOG_INF("%f,%f", (double)sample_.temp, (double)heater_.GetDuty());
@@ -217,7 +217,10 @@ void ImuManager::Task()
  */
 bool ImuManager::Preheat()
 {
-    constexpr uint32_t kWaitUs = 1000;             // 采样间隔 (µs)
+    constexpr uint32_t kWaitUs    = 1000;               // 采样间隔 (µs)
+    constexpr uint32_t kTimeoutMs = 10000;              // 超时时间 (ms)
+
+    const uint32_t Start_ms = k_uptime_get();
 
     log_timer_.SetPeriod(10);
 
@@ -240,6 +243,11 @@ bool ImuManager::Preheat()
         log_timer_.Clock([&](){
             LOG_INF("%f,%f", (double)sample_.temp, (double)heater_.GetDuty());
         });
+
+        if (k_uptime_get() - Start_ms >= kTimeoutMs) {
+            LOG_ERR("preheat timeout");
+            return false;
+        }
 
         k_busy_wait(kWaitUs);
     }

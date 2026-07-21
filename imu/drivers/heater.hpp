@@ -24,8 +24,8 @@ namespace {
 namespace ident {
 
 enum class IdentStage : uint8_t {
-    Cooldown    = 0,        // 等待温度降至目标并稳定
-    Heating     = 1,        // 施加 duty 后立即记录温度响应
+    Cooldown    = 0,        // 等待温度降至基线
+    Heating     = 1,        // 施加 duty 记录升温响应
     SafetyStop  = 2,        // 超温停止
     Finished    = 3,        // 全部阶段完成
 };
@@ -39,7 +39,7 @@ enum class Cmd : uint8_t {
 class Identifier
 {
 public:
-    static constexpr float  kDutySeq[] { 0.2f, 0.3f, 0.4f, 0.5f, 0.6f, 0.7f};
+    static constexpr float  kDutySeq[] {0.20f, 0.25f, 0.30f, 0.35f, 0.40f, 0.45f, 0.50f};
 
     bool     Init();
     float    GetDuty()   const { return duty_; }
@@ -52,7 +52,7 @@ private:
     uint32_t        last_cycle_ = 0;                    // 上一帧 cycle 计数
     float           duty_       = 0.0f;                 // 阶段占空比
     alg::pid::Pid   pid_        {};
-    stability::WinStable<100> stable_ {};               // 滑动窗口稳定判据
+    stability::WinStable<200> stable_ {};               // 滑动窗口稳定判据
 
     void Reset();
     void CheckCmd();
@@ -68,8 +68,8 @@ private:
 namespace heater {
 
 enum class Mode : uint8_t {
-    Normal      = 0,    // PID 闭环控温
-    AutoIdent   = 1,    // 自动辨识
+    ClosedLoop = 0,     // PID 闭环控温
+    AutoIdent,          // 自动辨识
 };
 
 class Heater final
@@ -91,7 +91,7 @@ private:
     Pwm           heater_pwm_ {};
     alg::pid::Pid pid_        {};
 
-    Mode     mode_             = Mode::Normal;
+    Mode     mode_             = Mode::ClosedLoop;
     float    duty_             = 0.01f;
     bool     initialized_      = false;
 

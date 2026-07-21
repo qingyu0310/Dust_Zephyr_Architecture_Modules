@@ -21,9 +21,9 @@ namespace imu {
 
 enum class ImuStartMode : uint8_t
 {
-    Normal      = 0,        // 正常启动
-    AutoCalib   = 1,        // 自动校准
-    AutoIdent   = 2,        // 自动辨识
+    Normal = 0,         // 开环启动，用于调试
+    AutoCalib,          // 自动校准，设置陀螺仪偏置
+    AutoIdent,          // 自动辨识，配合脚本使用
 };
 
 class ImuManager final

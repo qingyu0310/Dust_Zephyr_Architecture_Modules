@@ -14,9 +14,10 @@
 #pragma message "Compiling Modules/Motors Dji"
 
 namespace {
-    static constexpr float kpi  = 3.141592653589793f;
-    static constexpr float k2pi = 6.283185307179586f;
-} 
+    static constexpr float kpi      = 3.141592653589793f;
+    static constexpr float k2pi     = 6.283185307179586f;
+    static constexpr float kRad2Deg = 57.2957795f;
+}
 
 void DjiC6xx::CanCpltRxCallback(uint8_t* buffer)
 {
@@ -38,22 +39,25 @@ void DjiC6xx::CanCpltRxCallback(uint8_t* buffer)
 
     const int32_t total_enc = total_round_ * static_cast<int32_t>(cfg_.enc_per_round) + static_cast<int32_t>(enc);
     const float motor_angle = (static_cast<float>(total_enc) / static_cast<float>(cfg_.enc_per_round)) * k2pi;
+
     // ω (rad/s) = RPM * 2π / 60
     const float omega_motor = (static_cast<float>(omega_rpm) * k2pi) / 60.0f; 
-    // v = (ω_motor / gearbox_ratio) * wheel_r / 2  ——差速底盘单轮对机器人线速度贡献
+    
+    // v = (ω_motor / gearbox_ratio) * wheel_r / 2
     const float velocity    = (cfg_.wheel_r != 0.0f) ? (omega_motor / cfg_.gearbox_ratio) * cfg_.wheel_r * 0.5f : 0.0f; 
     const float current     = static_cast<float>(current_raw) * kCurrentK;
-    const float torque      = current * kTorqueK;
+    const float torque      = current * cfg_.torque_k;
     const float temp_float  = static_cast<float>(temp);
 
     /* seqlock 写锁：允许其他中断，线程读到冲突时会自旋重试 */
     atomic_inc(&seq_);
-    now_angle_       = (cfg_.gearbox_ratio != 0.0f) ? (motor_angle / cfg_.gearbox_ratio) : motor_angle;
-    now_omega_       = (cfg_.gearbox_ratio != 0.0f) ? (omega_motor / cfg_.gearbox_ratio) : omega_motor;
-    now_velocity_    = velocity;
-    now_current_     = current;
-    now_torque_      = torque;
-    now_temperature_ = temp_float;
+    now_rad_                = (cfg_.gearbox_ratio != 0.0f) ? (motor_angle / cfg_.gearbox_ratio) : motor_angle;
+    now_angle_              = now_rad_ * kRad2Deg;
+    now_omega_              = (cfg_.gearbox_ratio != 0.0f) ? (omega_motor / cfg_.gearbox_ratio) : omega_motor;
+    now_velocity_           = velocity;
+    now_current_            = current;
+    now_torque_             = torque;
+    now_temp_               = temp_float;
     atomic_inc(&seq_);
 }
 

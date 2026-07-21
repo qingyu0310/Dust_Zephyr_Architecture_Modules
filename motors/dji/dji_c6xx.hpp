@@ -32,11 +32,12 @@ class DjiC6xx final
 {
 public:
     struct Config  {
-        uint16_t rx_id      = 0x201;
+        uint16_t rx_id         = 0x201;
 
-        uint16_t enc_per_round = 8192;
-        float    gearbox_ratio = 3591.f / 187.f;
-        float    wheel_r       = 0.1f;
+        uint16_t enc_per_round = 8192;              // 电机轴编码器每圈脉冲数
+        float    gearbox_ratio = 3591.f / 187.f;    // 总减速比 = 电机轴圈数 / 负载轴圈数
+        float    wheel_r       = 0.1f;              // 负载轴末端等效半径(m)，用于线速度换算
+        float    torque_k      = 0.3f;              // 转矩常数 N·m/A（M3508=0.3, M2006=0.18）
     };
 
     void Init(Config cfg) {
@@ -49,7 +50,7 @@ public:
      * @brief 电机状态快照
      */
     struct Snapshot {
-        float angle, omega, current, torque, velocity, temperature;
+        float radian, angle, omega, current, torque, velocity, temperature;
     };
 
     /** @brief 批量读——seqlock 保护，一次拿到所有值的一致快照 */
@@ -60,39 +61,41 @@ public:
         do {
             seq = atomic_get(&seq_);
             if (seq & 1) continue;
+            snap.radian      = now_rad_;
             snap.angle       = now_angle_;
             snap.omega       = now_omega_;
             snap.current     = now_current_;
             snap.torque      = now_torque_;
             snap.velocity    = now_velocity_;
-            snap.temperature = now_temperature_;
+            snap.temperature = now_temp_;
         } while (atomic_get(&seq_) != seq);
         return snap;
     }
 
-    float GetNowAngle()       const { return now_angle_;        }
-    float GetNowOmega()       const { return now_omega_;        }
-    float GetNowCurrent()     const { return now_current_;      }
-    float GetNowTorque()      const { return now_torque_;       }
-    float GetNowVelocity()    const { return now_velocity_;     }
-    float GetNowTemperature() const { return now_temperature_;  }
+    float GetNowRadian()      const { return now_rad_;      }
+    float GetNowAngle()       const { return now_angle_;    }
+    float GetNowOmega()       const { return now_omega_;    }
+    float GetNowCurrent()     const { return now_current_;  }
+    float GetNowTorque()      const { return now_torque_;   }
+    float GetNowVelocity()    const { return now_velocity_; }
+    float GetNowTemperature() const { return now_temp_;     }
 
 private:
-    static constexpr float kTorqueK  = 0.3f;                    // 转矩常数 N·m/A（手册数据）
-    static constexpr float kCurrentK = 20.0f / 16384.0f;        // 电流 AD 比例系数（手册数据）
-    
+    static constexpr float kCurrentK = 20.0f / 16384.0f;  // 电流 AD 比例系数（DJI 电调协议固定值）
+
     Config cfg_ {};
 
     uint32_t last_enc_     = 0;
     int32_t total_enc_     = 0;
     int32_t total_round_   = 0;
 
-    float now_angle_       = 0.0f;
-    float now_omega_       = 0.0f;
-    float now_current_     = 0.0f;
-    float now_torque_      = 0.0f;
-    float now_velocity_    = 0.0f;
-    float now_temperature_ = 0.0f;
+    float now_rad_       = 0.0f;
+    float now_angle_     = 0.0f;
+    float now_omega_     = 0.0f;
+    float now_current_   = 0.0f;
+    float now_torque_    = 0.0f;
+    float now_velocity_  = 0.0f;
+    float now_temp_      = 0.0f;
 
     mutable atomic_t seq_ = 0;
 };

@@ -28,12 +28,12 @@ namespace {
     static constexpr float kBaseTol = 0.10f;
 
     static constexpr alg::pid::Pid::Config kPidConfig {
-        .kp = 0.22f, 
-        .ki = 0.05f, 
-        .kd = 0.005f,
-        .iOutMax = 0.5f, 
-        .outMax = kMaxDuty, 
-        .dt = 0.001f,
+        .kp         = 0.19f, 
+        .ki         = 0.03f, 
+        .kd         = 0.0005f,
+        .iOutMax    = 0.5f, 
+        .outMax     = kMaxDuty, 
+        .dt         = 0.001f,
     };
 };
 
@@ -103,38 +103,38 @@ void Identifier::OpenLoop(float temperature, uint32_t dt_us, IdentStage& state, 
 {
     constexpr uint16_t kNumStages = sizeof(kDutySeq) / sizeof(kDutySeq[0]);
 
-    switch (state) 
+    switch (state)
     {
-        case IdentStage::Cooldown: 
+        case IdentStage::Cooldown:
         {
-            if (temperature < kBaseC || (temperature <= kBaseC + kBaseTol && stable_.Check(temperature, dt_us * 1e-6f))) {
+            if (temperature < kBaseC || (temperature <= kBaseC + kBaseTol && stable_.Check(temperature, dt_us * 1e-6f))) 
+            {
                 state = IdentStage::Heating;
-                duty_ = kDutySeq[0];
+                duty_ = kDutySeq[stage];
                 stable_.Reset();
                 LOG_INF("Cooldown Done");
             }
-        break;
-    }
-    case IdentStage::Heating: 
-    {
-        if (stable_.Check(temperature, dt_us * 1e-6f)) 
-        {
-            if (++stage < kNumStages) {
-                duty_ = kDutySeq[stage];
-                stable_.Reset();
-                LOG_INF("Stage Done");
-            }
-            else {
-                duty_ = kMinDuty;
-                state = IdentStage::Finished;
-                LOG_INF("Finished");
-            }
+            break;
         }
-        break;
-    }
-    default:
-        duty_ = kMinDuty;
-        break;
+        case IdentStage::Heating:
+        {
+            if (stable_.Check(temperature, dt_us * 1e-6f)) 
+            {
+                duty_ = kMinDuty;
+                if (++stage < kNumStages) {
+                    state = IdentStage::Cooldown;
+                    stable_.Reset();
+                    LOG_INF("Stage Done");
+                } else {
+                    state = IdentStage::Finished;
+                    LOG_INF("Finished");
+                }
+            }
+            break;
+        }
+        default:
+            duty_ = kMinDuty;
+            break;
     }
 }
 
@@ -288,7 +288,7 @@ bool Heater::Init()
     if (!ident_.Init()) {
         return false;
     }
-#endif
+#endif // CONFIG_IMU_IDENTIFICATION
 
     return heater_pwm_.SetDuty(duty_);
 }
@@ -305,7 +305,7 @@ void Heater::Update(float temperature)
 {
     if (!initialized_) return;
 
-    if (mode_ == Mode::Normal)
+    if (mode_ == Mode::ClosedLoop)
     {
         duty_ = pid_.Calc(kTargetTemp, temperature);
     }
