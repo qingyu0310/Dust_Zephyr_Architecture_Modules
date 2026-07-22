@@ -1,21 +1,7 @@
 /**
- * @file dev_dji_c6xx.hpp
+ * @file dji_c6xx.hpp
  * @author qingyu
- * @brief DJI C6xx 电机驱动 —— 仅作 CAN 数据解析与状态回馈
- *
- * @par 职责边界
- *      本类仅负责从 CAN 帧解析电机反馈数据（角度/角速度/电流/转速/温度），
- *      并通过 @ref ReadAll() 或单个 getter 提供给上层。
- *      @n **不包含** 任何控制算法（PID、功率限制等）。
- *      @n **不负责** CAN 帧发送（发送由专门的 CAN_TX 线程处理）。
- *
- * @par 线程安全
- *      - CAN 接收中断中调用 @ref CanCpltRxCallback() 写入数据
- *      - 控制线程通过 @ref ReadAll() 原子读取一致快照（seqlock 保护）
- *      - 单字段 getter 无锁（32-bit RISC-V 上 aligned float 访问天然原子）
- *
- * @par 数据流
- *      CAN 中断 ──→ CanCpltRxCallback ──→ (seqlock) ──→ ReadAll / getter
+ * @brief DJI C610 / C620 电机驱动 —— CAN 数据解析与状态回馈
  * @version 0.1
  * @date 2026-04-28
  *
@@ -28,32 +14,107 @@
 #include "stdint.h"
 #include <zephyr/sys/atomic.h>
 
-class DjiC6xx final
+namespace motor::dji {
+
+/**
+ * @brief DJI C610 电调（M2006 电机）
+ *
+ * 反馈帧（1KHz）:
+ *   [0-1] 转子机械角度  (0~8191 → 0~360°)
+ *   [2-3] 转子转速       (rpm, int16)
+ *   [4-5] 实际输出转矩   (raw * 5/16384 → A)
+ *   [6-7] Null
+ */
+class DjiC610 final
 {
 public:
-    struct Config  {
+    struct Config {
         uint16_t rx_id         = 0x201;
-
-        uint16_t enc_per_round = 8192;              // 电机轴编码器每圈脉冲数
-        float    gearbox_ratio = 3591.f / 187.f;    // 总减速比 = 电机轴圈数 / 负载轴圈数
-        float    wheel_r       = 0.1f;              // 负载轴末端等效半径(m)，用于线速度换算
-        float    torque_k      = 0.3f;              // 转矩常数 N·m/A（M3508=0.3, M2006=0.18）
+        float    gearbox_ratio = 3591.f / 187.f;
+        float    wheel_r       = 0.1f;
+        float    torque_k      = 0.18f;       // M2006 转矩常数 (N·m/A)
     };
 
-    void Init(Config cfg) {
-        cfg_ = cfg;
+    struct Snapshot {
+        float radian, angle, omega, current, torque, velocity;
     };
 
+    void Init(Config cfg) { cfg_ = cfg; }
     void CanCpltRxCallback(uint8_t* buffer);
 
-    /**
-     * @brief 电机状态快照
-     */
+    Snapshot ReadAll() const
+    {
+        atomic_t seq;
+        Snapshot snap;
+        do {
+            seq = atomic_get(&seq_);
+            if (seq & 1) continue;
+            snap.radian      = now_rad_;
+            snap.angle       = now_angle_;
+            snap.omega       = now_omega_;
+            snap.current     = now_current_;
+            snap.torque      = now_torque_;
+            snap.velocity    = now_velocity_;
+        } while (atomic_get(&seq_) != seq);
+        return snap;
+    }
+
+    float GetCurrentMax()     const { return kCurrentMax;   }
+    float GetNowRadian()      const { return now_rad_;      }
+    float GetNowAngle()       const { return now_angle_;    }
+    float GetNowOmega()       const { return now_omega_;    }
+    float GetNowCurrent()     const { return now_current_;  }
+    float GetNowTorque()      const { return now_torque_;   }
+    float GetNowVelocity()    const { return now_velocity_; }
+
+private:
+    static constexpr uint16_t kEncPerRound = 8192;
+    static constexpr float    kCurrentK    = 10.0f / 16384.0f;
+    static constexpr float    kCurrentMax  = 10.0f;
+
+    Config cfg_ {};
+
+    uint32_t last_enc_   = 0;
+    int32_t  total_enc_  = 0;
+    int32_t  total_round_ = 0;
+
+    float now_rad_      = 0.0f;
+    float now_angle_    = 0.0f;
+    float now_omega_    = 0.0f;
+    float now_current_  = 0.0f;
+    float now_torque_   = 0.0f;
+    float now_velocity_ = 0.0f;
+
+    mutable atomic_t seq_ = 0;
+};
+
+/**
+ * @brief DJI C620 电调（M3508 电机）
+ *
+ * 反馈帧（1KHz）:
+ *   [0-1] 编码器         (16bit)
+ *   [2-3] 转子转速       (rpm, int16)
+ *   [4-5] 实际电流       (raw * 20/16384 → A)
+ *   [6]   MOS 温度
+ *   [7]   Null
+ */
+class DjiC620 final
+{
+public:
+    struct Config {
+        uint16_t rx_id         = 0x201;
+        float    gearbox_ratio = 3591.f / 187.f;
+        float    wheel_r       = 0.1f;
+        float    torque_k      = 0.3f;       // M3508 转矩常数 (N·m/A)
+    };
+
     struct Snapshot {
         float radian, angle, omega, current, torque, velocity, temperature;
     };
 
-    /** @brief 批量读——seqlock 保护，一次拿到所有值的一致快照 */
+    void Init(Config cfg) { cfg_ = cfg; }
+    void CanCpltRxCallback(uint8_t* buffer);
+
     Snapshot ReadAll() const
     {
         atomic_t seq;
@@ -71,7 +132,7 @@ public:
         } while (atomic_get(&seq_) != seq);
         return snap;
     }
-
+    float GetCurrentMax()     const { return kCurrentMax;   }
     float GetNowRadian()      const { return now_rad_;      }
     float GetNowAngle()       const { return now_angle_;    }
     float GetNowOmega()       const { return now_omega_;    }
@@ -81,21 +142,25 @@ public:
     float GetNowTemperature() const { return now_temp_;     }
 
 private:
-    static constexpr float kCurrentK = 20.0f / 16384.0f;  // 电流 AD 比例系数（DJI 电调协议固定值）
+    static constexpr uint16_t kEncPerRound = 8192;
+    static constexpr float    kCurrentK    = 20.0f / 16384.0f;
+    static constexpr float    kCurrentMax  = 20.0f;
 
     Config cfg_ {};
 
-    uint32_t last_enc_     = 0;
-    int32_t total_enc_     = 0;
-    int32_t total_round_   = 0;
+    uint32_t last_enc_   = 0;
+    int32_t  total_enc_  = 0;
+    int32_t  total_round_ = 0;
 
-    float now_rad_       = 0.0f;
-    float now_angle_     = 0.0f;
-    float now_omega_     = 0.0f;
-    float now_current_   = 0.0f;
-    float now_torque_    = 0.0f;
-    float now_velocity_  = 0.0f;
-    float now_temp_      = 0.0f;
+    float now_rad_      = 0.0f;
+    float now_angle_    = 0.0f;
+    float now_omega_    = 0.0f;
+    float now_current_  = 0.0f;
+    float now_torque_   = 0.0f;
+    float now_velocity_ = 0.0f;
+    float now_temp_     = 0.0f;
 
     mutable atomic_t seq_ = 0;
 };
+
+} // namespace motor::dji
