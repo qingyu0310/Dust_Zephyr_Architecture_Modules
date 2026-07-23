@@ -111,7 +111,6 @@ private:
     void InitRange();
     void ResetDetect();
     void Consume(uint16_t len);
-    void DropOneByte();
     void HandleLocked();
     void HandleDetecting();
     void Dispatch();

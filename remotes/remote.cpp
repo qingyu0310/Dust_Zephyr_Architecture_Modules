@@ -60,11 +60,6 @@ void Remote::ProcessChunk(const uint8_t *data, uint16_t len)
     while (len > 0)
     {
         uint16_t cap = kFrameBufSize - frame_.frame_pos_;
-        if (cap == 0) {
-            DropOneByte();
-            cap = kFrameBufSize - frame_.frame_pos_;
-        }
-
         uint16_t n = len > cap ? cap : len;
         memcpy(frame_.frame_buf_ + frame_.frame_pos_, data, n);
         frame_.frame_pos_ += n;
@@ -140,8 +135,7 @@ void Remote::HandleDetecting()
         {
             // 全部试完 → 从头开始
             detect_.probe = {};
-            if (frame_.frame_pos_ >= detect_.max_frame_size)
-                DropOneByte();
+            frame_.frame_pos_ = 0;
             return;
         }
         // 切到下一个协议
@@ -175,7 +169,7 @@ void Remote::HandleLocked()
             Consume(entry->frame_size);
         } else {
             detect_.fail_count++;
-            DropOneByte();
+            Consume(entry->frame_size);
         }
 
         if (detect_.fail_count >= kUnlockFailLimit) {
@@ -240,17 +234,6 @@ void Remote::Consume(uint16_t len)
     uint16_t rem = frame_.frame_pos_ - len;
     memmove(frame_.frame_buf_, frame_.frame_buf_ + len, rem);
     frame_.frame_pos_ = rem;
-}
-
-/**
- * @brief 从帧缓冲区头部丢弃 1 字节，用于重新同步。
- */
-void Remote::DropOneByte()
-{
-    if (frame_.frame_pos_ == 0) return;
-
-    frame_.frame_pos_--;
-    memmove(frame_.frame_buf_, frame_.frame_buf_ + 1, frame_.frame_pos_);
 }
 
 } // namespace remote
