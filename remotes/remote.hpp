@@ -13,31 +13,67 @@
 #include "uart.hpp"
 #include "remote_to.hpp"
 
-enum class RemoteType : uint8_t
+namespace remote {
+
+class RemoteProtocol
 {
-    DR16 = 0,
-    VT12,
-    VT13,
-    Auto,
-    None,
+public:
+    const uart_config &GetLineCfg() const { return line_cfg_; }
+
+    /**
+     * @brief 帧解码
+     * @param buffer  原始帧数据
+     * @param len     帧长度
+     * @param pub     输出消息
+     * @note 通道值需满足：右/上摇杆 = 通道最大值
+     */
+    virtual bool Decode(const uint8_t *buffer, uint8_t len, topic::remote_to::Message &pub);
+    /**
+     * @brief 帧内容校验 — Remote 协议锁定用，Decode 不碰 Validate
+     * @param buffer  原始帧数据
+     * @param len     帧长度
+     * @return true   校验通过
+     */
+    virtual bool Validate(const uint8_t *buffer, uint8_t len);
+
+protected:
+    uart_config line_cfg_ {};      // 不同协议的 UART 参数（波特率/校验/数据位）
 };
 
-namespace remote {
+enum class Priority : uint8_t { High, Medium, Low };
+
+struct RemoteEntry {
+    const char     *name;          // 协议名称
+    uint16_t        frame_size;    // 帧长度
+    RemoteProtocol *protocol;      // 协议处理
+    Priority        priority;      // 优先级
+    uint8_t         need_hits;     // 锁定所需连续命中次数
+};
 
 class Remote final
 {
 public:
-    using ValidateFunc = bool (*)(const uint8_t *buffer, uint8_t len);
-    using DecodeFunc = bool (*)(const uint8_t *buffer, uint8_t len, topic::remote_to::Message &pub);
+    bool Init(UartDma &uart)
+    {
+        uart_ = &uart;
+        detect_.state = DetectState::Detecting;
+        InitRange();
+        ResetDetect();
+        ready_ = true;
+        return true;
+    }
 
-    struct Protocol {
-        RemoteType    type;
-        const char    *name;
-        uint16_t      frame_size;
-        ValidateFunc  validate;
-        DecodeFunc    decode;
-        uint8_t       lock_score;
-    };
+    bool Start(ThreadPrio prio = ThreadPrio::Normal)
+    {
+        if (!ready_) return false;
+        thread_.Start(TaskEntry, prio, this);
+        return true;
+    }
+
+private:
+    static constexpr uint16_t kFrameBufSize     = 64;                   // 帧缓冲区大小
+    static constexpr uint8_t  kUnlockFailLimit  = 5;                    // 连续失败解锁阈值
+    static constexpr uint32_t kRemoteTimeoutMs  = 100;                  // 遥控器超时时间
 
     enum class DetectState : uint8_t
     {
@@ -45,57 +81,56 @@ public:
         Locked,
     };
 
-    bool Init(RemoteType type, RxStream &uart);
-    bool Start(uint8_t prio = 5);
+    struct Probe {
+        const RemoteEntry  *entry   = nullptr;                          // 当前候选协议
+        uint8_t             hits    = 0;                                // 命中计数
+        uint8_t             retry   = 0;                                // 重试计数
+    };
 
-private:
-    Thread<1024 * 8> thread_ {};
-    RxStream *uart_ = nullptr;
+    struct {
+        DetectState         state           = DetectState::Detecting;
+        uint8_t             fail_count      = 0;
+        uint16_t            last_valid_ms   = 0;
+        uint8_t             min_frame_size  = 0;
+        uint8_t             max_frame_size  = 0;
+        const RemoteEntry  *locked          = nullptr;
+        Probe               probe           {};
+    } detect_ {};
 
-    RemoteType  configured_type_ = RemoteType::Auto;
-    RemoteType  active_type_     = RemoteType::None;
-    DetectState detect_state_    = DetectState::Detecting;
+    struct {
+        uint8_t  frame_buf_[kFrameBufSize] {};
+        uint16_t frame_pos_ = 0;
+    } frame_ {};
 
-    static constexpr uint16_t kFrameBufSize     = 64;
-    static constexpr uint8_t  kUnlockFailLimit  = 5;
-    static constexpr uint32_t kRemoteTimeoutMs  = 100;
-    static constexpr uint8_t  kProtocolCount    = static_cast<uint8_t>(RemoteType::Auto);
+    topic::remote_to::Message pub_ {};
+    UartDma            *uart_   = nullptr;             // UART 数据流
+    bool                ready_  = false;
+    Thread<1024 * 5>    thread_ {};                    // 遥控器解析线程
 
-    uint8_t  frame_buf_[kFrameBufSize] {};
-    uint16_t frame_pos_ = 0;
-    k_sem    rx_sem_;
-
-    topic::remote_to::Message  pub_ {};
-    Protocol proto_ {};
-    uint8_t  hit_count_[kProtocolCount] {};
-    uint8_t  fail_count_     = 0;
-    uint32_t last_valid_ms_  = 0;
-    uint16_t min_frame_size_ = 0;
-    uint16_t max_frame_size_ = 0;
-
-    bool ready_ = false;
-
-    void InitFrameSizeRange();
-    void GetProcessFunc();
-    const Protocol *FindProtocol(RemoteType type);
+    void SwitchProto(const RemoteEntry *e);
+    void InitRange();
     void ResetDetect();
     void Consume(uint16_t len);
     void DropOneByte();
-    void ClearPubData();
-    void Publish();
     void HandleLocked();
     void HandleDetecting();
-    void ProcessBuffered();
+    void Dispatch();
     void ProcessChunk(const uint8_t *data, uint16_t len);
+    
     void Task();
 
     static void TaskEntry(void *p1, void *p2, void *p3)
     {
         ARG_UNUSED(p2);
         ARG_UNUSED(p3);
-        auto self = static_cast<Remote *>(p1);
+        auto self = static_cast<Remote*>(p1);
         self->Task();
     }
 };
+
+#define REGISTER_REMOTE(RemoteType, frame_size_, priority_, lock_score_, name_)    \
+    static RemoteType kRemoteProtocol_##name_;                                      \
+    static const remote::RemoteEntry kRemoteEntry_##name_                           \
+    __attribute__((used, __section__(".remote"))) = { #name_, frame_size_, &kRemoteProtocol_##name_, priority_, lock_score_ }
 
 } // namespace remote

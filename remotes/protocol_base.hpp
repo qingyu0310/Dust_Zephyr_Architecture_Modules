@@ -15,6 +15,7 @@
 #include "remote_to.hpp"
 
 // 共用类型 — 各协议解析的内部数据结构
+
 struct Mouse
 {
     float x = 0.0f, y = 0.0f, z = 0.0f;
@@ -60,7 +61,13 @@ struct KeyboardState
     }
 };
 
-// 归一化函数
+/**
+ * @brief 通道值归一化（整型中心 → [-1, 1]）
+ * @param v       原始通道值
+ * @param center  中心值（如 1024）
+ * @param max     最大值
+ * @return float  归一化结果
+ */
 inline float normChannel(int16_t v, int16_t center, int16_t max)
 {
     float maxDist = max - center;
@@ -70,6 +77,13 @@ inline float normChannel(int16_t v, int16_t center, int16_t max)
     return r;
 }
 
+/**
+ * @brief 通道值归一化（预求倒数，避免除法）
+ * @param v             原始通道值
+ * @param center        中心值
+ * @param inv_max_dist  1 / (max - center)
+ * @return float        归一化结果
+ */
 inline float normChannelInv(int16_t v, int16_t center, float inv_max_dist)
 {
     float r = (static_cast<float>(v) - static_cast<float>(center)) * inv_max_dist;
@@ -78,6 +92,12 @@ inline float normChannelInv(int16_t v, int16_t center, float inv_max_dist)
     return r;
 }
 
+/**
+ * @brief 鼠标值归一化
+ * @param v      原始鼠标差值
+ * @param scale  缩放系数
+ * @return float 归一化结果
+ */
 inline float normMouse(float v, float scale)
 {
     constexpr float kInvNorm = 1.0f / 32767.0f;
@@ -87,11 +107,17 @@ inline float normMouse(float v, float scale)
     return v;
 }
 
+/**
+ * @brief 通道/键盘/鼠标合成到共享消息
+ * @tparam OutData  协议内部数据结构（须有 .ch / .mouse / .keyboard）
+ * @param pub  输出消息
+ * @param od   协议解析后的内部数据
+ */
 template<typename OutData>
 inline void processChannel(topic::remote_to::Message& pub, const OutData& od)
 {
     pub.chassisy = od.keyboard.w ? 1.0f : od.keyboard.s ? -1.0f : od.ch.chassisy;
     pub.chassisx = od.keyboard.a ? 1.0f : od.keyboard.d ? -1.0f : od.ch.chassisx;
-    pub.pitch    = od.mouse.y             + od.ch.pitch;
-    pub.yaw      = od.mouse.x             + od.ch.yaw;
+    pub.pitch    = od.mouse.y           + od.ch.pitch;
+    pub.yaw      = od.mouse.x           + od.ch.yaw;
 }

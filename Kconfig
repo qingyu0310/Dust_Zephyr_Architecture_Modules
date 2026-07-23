@@ -1,34 +1,5 @@
 # modules/Kconfig - hardware-facing modules built on top of drivers/topics
 
-config MOD_DEV_POWERMETER
-    bool "Horizon power meter"
-    default n
-    select COM_CAN
-    help
-        Horizon power meter module.
-
-config MOD_DEV_MOTOR_DJI
-    bool "DJI motor"
-    default n
-    select COM_CAN
-    help
-        DJI motor module.
-
-config MOD_DEV_MOTOR_DM
-    bool "DM motor"
-    default n
-    select COM_CAN
-    help
-        DM motor module.
-
-config MOD_DEV_REMOTE
-    bool "Remote receiver"
-    default n
-    select COM_UART_DMA
-    select TPC_REMOTE_TO
-    help
-        Remote receiver module.
-
 config MOD_DEV_IMU
     bool "IMU module"
     default n
@@ -65,3 +36,73 @@ config MOD_DEV_IMU_IDENT
     help
         IMU heater duty-step open-loop identification.
 
+config MOD_DEV_MOTOR_DJI
+    bool "DJI motor"
+    default n
+    select COM_CAN
+    help
+        DJI motor module.
+
+config MOD_DEV_MOTOR_DM
+    bool "DM motor"
+    default n
+    select COM_CAN
+    help
+        DM motor module.
+
+config MOD_DEV_POWERMETER
+    bool "Horizon power meter"
+    default n
+    select COM_CAN
+    help
+        Horizon power meter module.
+
+config MOD_DEV_REMOTE
+    bool "Remote receiver"
+    default n
+    select COM_UART_DMA
+    select TPC_REMOTE_TO
+    help
+        Remote receiver module.
+
+config MOD_DEV_REMOTE_DUAL
+    bool "Dual remote support"
+    default n
+    depends on MOD_DEV_REMOTE
+    help
+        Enable two independent remote receiver instances.
+
+config MOD_DEV_REMOTE_AUTO
+    bool "Auto link all protocols"
+    default n
+    depends on MOD_DEV_REMOTE
+    help
+        Automatically link all available protocol sources.
+
+config MOD_DEV_REMOTE_DR16
+    bool "DR16 protocol"
+    default n
+    depends on MOD_DEV_REMOTE
+    help
+        DR16 remote protocol.
+
+config MOD_DEV_REMOTE_SBUS
+    bool "SBUS protocol"
+    default n
+    depends on MOD_DEV_REMOTE
+    help
+        SBUS remote protocol.
+
+config MOD_DEV_REMOTE_VT12
+    bool "VT12 protocol"
+    default n
+    depends on MOD_DEV_REMOTE
+    help
+        VT12 remote protocol (mouse + keyboard).
+
+config MOD_DEV_REMOTE_VT13
+    bool "VT13 protocol"
+    default n
+    depends on MOD_DEV_REMOTE
+    help
+        VT13 remote protocol (full-featured).
