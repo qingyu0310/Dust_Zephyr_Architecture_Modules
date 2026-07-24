@@ -84,8 +84,8 @@ protected:
   hits++   retry++
     │         │
     ├ hits >= need_hits ──→ Locked（锁定）
-    │
-    ├ retry >= need_hits ──→ 切下一个协议
+    |         │
+    |         ├ retry >= need_hits ──→ 切下一个协议
     │
     └ 不够 → 继续驻留
 ```
@@ -135,6 +135,61 @@ protected:
 - 注册宏把实现和声明集中到协议 .cpp 末尾，不污染头文件
 - 虚函数调用 < 10ns 级别，对比 SwitchProto 的 1ms busy_wait 可忽略
 
+## 8. 设计思路
+
+### 8.1 热路径笔直，冷路径复杂
+
+架构的最高优先级原则：**锁定后的解码路径不能有无关分支**。
+
+```
+锁定热路径： Read → Decode → Publish     ← 无分支
+冷路径：     探测 / 切换 / 超时处理       ← 复杂但罕见
+```
+
+- 锁定状态不知道第二个串口的存在
+- 所有"要不要切换串口"的判断全部压在超时冷路径里
+- 单串口和双串口的 HandleLocked 代码一模一样——不存在"双串口版本"这个分支
+
+### 8.2 优先级不拆段
+
+不设 `.remote_high` / `.remote_low` 两个链接器段，而是用 `RemoteEntry::priority` 字段运行时判断。
+
+```
+不拆段的好处：
+- 增删协议不动链接脚本
+- "协议优先级"和"串口优先级"不绑定
+- 运行时可以灵活决定哪个串口走哪些协议
+```
+
+优先级判断在冷路径（初始化、切换）中执行，不关心那点判断时间。
+
+### 8.3 复杂度在内部收敛
+
+用户感知到的 API 不随内部复杂度膨胀：
+
+```cpp
+// 单串口
+remote.Init(uart);
+
+// 双串口 —— Init 多一个参数而已，Start 不变
+remote.Init(uart_high, uart_low);
+remote.Start();
+```
+
+内部维护 `uart_[2]` + `detect_[2]` + `uart_idx_` 索引切换，用户不需要知道"哪个是高哪个是低"，代码自己管理。
+
+### 8.4 数据结构就是状态机
+
+```cpp
+struct {
+    Probe probe {};       // 当前探测进度
+    bool  ready;          // 串口是否可用
+    // ... 其他状态
+} detect_[2] {};
+```
+
+每个串口的 `detect_[i]` 独立维护自身的探测进度，互不干扰。切换时直接用目标串口的 `detect_` 状态继续，不重置探测记录。这个设计本质上是**把状态机实例化了**——不需要 Manager 层来协调两个串口。
+
 ## 目录结构
 
 ```
@@ -176,16 +231,16 @@ k_sem_give → Task 循环
 ProcessChunk → frame_buf_
     │ Dispatch()
     ▼
-┌──────────┬──────────┐
-│ Detecting │  Locked  │
-│  Handle___│ Handle___│
-│  Detecting│  Locked  │
-└─────┬─────┴────┬────┘
-      │           │ Validate / Decode
-      ▼           ▼
-    Consume → zbus_chan_pub
-                 │
-                 ▼
+┌──────────┬─────────┐
+│ Detecting│ Locked  │
+│ Handle   │ Handle  │
+│ Detecting│ Locked  │
+└─────┬────┴────┬────┘
+      │         │ Validate / Decode
+      ▼         ▼
+   Consume → zbus_chan_pub
+                │
+                ▼
            topic::remote_to::Message
 ```
 
