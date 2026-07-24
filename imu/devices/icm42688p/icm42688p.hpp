@@ -45,10 +45,9 @@ public:
         ImuCalibration static_calibration {};
     };
 
+    Icm42688p();
     bool Init() override;
     Error LastError() const;
-
-    friend bool RegisterFromDevicetree();
 
 private:
     Config  config_ {};
@@ -72,15 +71,5 @@ private:
     float ConvertGyro        (int16_t raw) const override;
     float ConvertTemperature (int16_t raw) const override;
 };
-
-/**
- * @brief 返回 ICM42688P 单例数据源
- */
-Icm42688p& Instance();
-
-/**
- * @brief 根据 devicetree alias 构造 ICM42688P 配置
- */
-bool RegisterFromDevicetree();
 
 } // namespace icm42688p

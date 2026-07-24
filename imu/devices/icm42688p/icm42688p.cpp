@@ -8,6 +8,7 @@
 
 #include "icm42688p.hpp"
 #include "icm42688p_reg.hpp"
+#include "imu.hpp"
 
 #include <string.h>
 #include <zephyr/devicetree.h>
@@ -45,37 +46,21 @@ constexpr RegConfig kInitConfig[] {
 
 } // namespace
 
-/**
- * @brief 返回 ICM42688P 单例对象
- */
-Icm42688p& Instance()
-{
-    static Icm42688p icm42688p_ {};
-    return icm42688p_;
-}
-
-/**
- * @brief 通过板级 alias 构造 ICM42688P Source 配置
- */
-bool RegisterFromDevicetree()
+Icm42688p::Icm42688p()
 {
     constexpr uint32_t kSpiOperation = SPI_WORD_SET(8) | SPI_TRANSFER_MSB | SPI_MODE_CPOL | SPI_MODE_CPHA;
 
     static const struct spi_dt_spec imu = SPI_DT_SPEC_GET(DT_ALIAS(imu_spi), kSpiOperation, 0);
 
-    Icm42688p::Config cfg {};
-    cfg.spi = &imu;
+    config_.spi = &imu;
 
     for (uint8_t axis = 0; axis < 3; axis++)
     {
-        cfg.static_calibration.gyro_offset [axis] = reg::kStaticGyroOffset [axis];
-        cfg.static_calibration.gyro_scale  [axis] = reg::kStaticGyroScale  [axis];
-        cfg.static_calibration.accel_offset[axis] = reg::kStaticAccelOffset[axis];
-        cfg.static_calibration.accel_scale [axis] = reg::kStaticAccelScale [axis];
+        config_.static_calibration.gyro_offset [axis] = reg::kStaticGyroOffset [axis];
+        config_.static_calibration.gyro_scale  [axis] = reg::kStaticGyroScale  [axis];
+        config_.static_calibration.accel_offset[axis] = reg::kStaticAccelOffset[axis];
+        config_.static_calibration.accel_scale [axis] = reg::kStaticAccelScale [axis];
     }
-
-    icm42688p::Instance().config_ = cfg;
-    return true;
 }
 
 /**
@@ -152,15 +137,15 @@ bool Icm42688p::ReadRaw(ImuRawSample& raw)
         return false;
     }
 
-    raw.accel[0] = static_cast<int16_t>((static_cast<uint16_t>(motion_data[0])  << 8)  | static_cast<uint16_t>(motion_data[1]));
-    raw.accel[1] = static_cast<int16_t>((static_cast<uint16_t>(motion_data[2])  << 8)  | static_cast<uint16_t>(motion_data[3]));
-    raw.accel[2] = static_cast<int16_t>((static_cast<uint16_t>(motion_data[4])  << 8)  | static_cast<uint16_t>(motion_data[5]));
+    raw.accel[0] = static_cast<int16_t>((static_cast<uint16_t>(motion_data[0])  << 8) | static_cast<uint16_t>(motion_data[1]));
+    raw.accel[1] = static_cast<int16_t>((static_cast<uint16_t>(motion_data[2])  << 8) | static_cast<uint16_t>(motion_data[3]));
+    raw.accel[2] = static_cast<int16_t>((static_cast<uint16_t>(motion_data[4])  << 8) | static_cast<uint16_t>(motion_data[5]));
 
-    raw.gyro [0] = static_cast<int16_t>((static_cast<uint16_t>(motion_data[6])  << 8)  | static_cast<uint16_t>(motion_data[7]));
-    raw.gyro [1] = static_cast<int16_t>((static_cast<uint16_t>(motion_data[8])  << 8)  | static_cast<uint16_t>(motion_data[9]));
-    raw.gyro [2] = static_cast<int16_t>((static_cast<uint16_t>(motion_data[10]) << 8)  | static_cast<uint16_t>(motion_data[11]));
+    raw.gyro [0] = static_cast<int16_t>((static_cast<uint16_t>(motion_data[6])  << 8) | static_cast<uint16_t>(motion_data[7]));
+    raw.gyro [1] = static_cast<int16_t>((static_cast<uint16_t>(motion_data[8])  << 8) | static_cast<uint16_t>(motion_data[9]));
+    raw.gyro [2] = static_cast<int16_t>((static_cast<uint16_t>(motion_data[10]) << 8) | static_cast<uint16_t>(motion_data[11]));
 
-    raw.temp = static_cast<int16_t>((static_cast<uint16_t>(temp_data[0]) << 8)  | static_cast<uint16_t>(temp_data[1]));
+    raw.temp     = static_cast<int16_t>((static_cast<uint16_t>(temp_data[0]) << 8) | static_cast<uint16_t>(temp_data[1]));
 
     last_error_ = Error::None;
     return true;
@@ -309,4 +294,8 @@ float Icm42688p::ConvertTemperature(int16_t raw) const
     return static_cast<float>(raw) * kFactor + kOff;
 }
 
+REGISTER_IMU(Icm42688p, icm42688p);
+
 } // namespace icm42688p
+
+

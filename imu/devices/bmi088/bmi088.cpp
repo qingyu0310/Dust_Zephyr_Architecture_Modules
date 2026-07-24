@@ -8,6 +8,7 @@
 
 #include "bmi088.hpp"
 #include "bmi088_reg.hpp"
+#include "imu.hpp"
 
 #include <string.h>
 #include <zephyr/devicetree.h>
@@ -31,7 +32,8 @@ struct RegConfig {
 };
 
 /**
- * @brief 加速度计初始化寄存器表
+ * @brief 
+ * 
  */
 constexpr RegConfig kAccelConfig[] {
     {reg::kAccPwrCtrl,      reg::kAccPowerOn            },
@@ -56,39 +58,23 @@ constexpr RegConfig kGyroConfig[] {
 
 } // namespace
 
-/**
- * @brief 返回 BMI088 单例对象
- */
-Bmi088& Instance()
-{
-    static Bmi088 bmi088_ {};
-    return bmi088_;
-}
-
-/**
- * @brief 通过板级 alias 构造 BMI088 Source 配置
- */
-bool RegisterFromDevicetree()
+Bmi088::Bmi088()
 {
     constexpr uint32_t kSpiOperation = SPI_WORD_SET(8) | SPI_TRANSFER_MSB | SPI_MODE_CPOL | SPI_MODE_CPHA;
 
-    static const struct spi_dt_spec accel = SPI_DT_SPEC_GET(DT_ALIAS(bmi088_accel), kSpiOperation, 0);
-    static const struct spi_dt_spec gyro  = SPI_DT_SPEC_GET(DT_ALIAS(bmi088_gyro),  kSpiOperation, 0);
+    static const spi_dt_spec accel = SPI_DT_SPEC_GET(DT_ALIAS(bmi088_accel), kSpiOperation, 0);
+    static const spi_dt_spec gyro  = SPI_DT_SPEC_GET(DT_ALIAS(bmi088_gyro),  kSpiOperation, 0);
 
-    Bmi088::Config cfg {};
-    cfg.accel = &accel;
-    cfg.gyro  = &gyro;
+    config_.accel = &accel;
+    config_.gyro  = &gyro;
 
     for (uint8_t axis = 0; axis < 3; axis++)
     {
-        cfg.static_calibration.gyro_offset [axis] = reg::kStaticGyroOffset [axis];
-        cfg.static_calibration.gyro_scale  [axis] = reg::kStaticGyroScale  [axis];
-        cfg.static_calibration.accel_offset[axis] = reg::kStaticAccelOffset[axis];
-        cfg.static_calibration.accel_scale [axis] = reg::kStaticAccelScale [axis];
+        config_.static_calibration.gyro_offset [axis] = reg::kStaticGyroOffset [axis];
+        config_.static_calibration.gyro_scale  [axis] = reg::kStaticGyroScale  [axis];
+        config_.static_calibration.accel_offset[axis] = reg::kStaticAccelOffset[axis];
+        config_.static_calibration.accel_scale [axis] = reg::kStaticAccelScale [axis];
     }
-
-    bmi088::Instance().config_ = cfg;
-    return true;
 }
 
 /**
@@ -385,3 +371,5 @@ float Bmi088::ConvertTemperature(int16_t raw) const
 }
 
 } // namespace bmi088
+
+REGISTER_IMU(bmi088::Bmi088, bmi088)

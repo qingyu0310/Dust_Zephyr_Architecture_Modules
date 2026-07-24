@@ -50,10 +50,8 @@ public:
         ImuCalibration static_calibration {};
     };
 
+    Bmi088();
     bool Init() override;
-
-    friend bool RegisterFromDevicetree();
-
     Error LastError() const;
 
 private:
@@ -81,15 +79,5 @@ private:
     uint8_t tx_[kSpiBufferSize] {};
     uint8_t rx_[kSpiBufferSize] {};
 };
-
-/**
- * @brief 返回 BMI088 单例数据源
- */
-Bmi088& Instance();
-
-/**
- * @brief 根据 devicetree alias 构造 BMI088 配置
- */
-bool RegisterFromDevicetree();
 
 } // namespace bmi088

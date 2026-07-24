@@ -77,17 +77,17 @@ class Heater final
 public:
     static constexpr float   kSlopeLimit = 0.02f;           // 斜率限 (°C/s)
     static constexpr float   kNoiseLimit = 0.1f;            // 极差限 (°C)
-    
-    stability::MeanStable<100, 3> stable_ {};
 
     bool  Init();
     void  Update(float temperature);
     void  SetMode(Mode mode)     { mode_ = mode; }
     Mode  GetMode()        const { return mode_; }
     float GetDuty()        const { return duty_; }
+    bool  Preheat(float temperature, float dt_s);
 
 private:
 
+    stability::MeanStable<100,3> stable_ {};
     Pwm           heater_pwm_ {};
     alg::pid::Pid pid_        {};
 

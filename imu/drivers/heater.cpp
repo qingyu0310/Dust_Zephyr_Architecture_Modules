@@ -15,17 +15,10 @@
 #include <zephyr/drivers/pwm.h>
 #include <zephyr/logging/log.h>
 
-#ifdef CONFIG_IMU_IDENTIFICATION
-
-#pragma message "Compiling Modules/Imu/Drivers/Ident"
-
-LOG_MODULE_REGISTER(ident, LOG_LEVEL_INF);
-
 namespace {
-    static constexpr float kMaxDuty = 0.95f;
-    static constexpr float kMinDuty = 0.001f;        // PWM最小不能为0
-    static constexpr float kBaseC   = 38.0f;
-    static constexpr float kBaseTol = 0.10f;
+    static constexpr float kMaxDuty     = 0.95f;
+    static constexpr float kMinDuty     = 0.001f;        // PWM最小不能为0
+    static constexpr float kTargetTemp  = 40.0f;
 
     static constexpr alg::pid::Pid::Config kPidConfig {
         .kp         = 0.19f, 
@@ -36,6 +29,17 @@ namespace {
         .dt         = 0.001f,
     };
 };
+
+#ifdef CONFIG_IMU_IDENTIFICATION
+
+#pragma message "Compiling Modules/Imu/Drivers/Ident"
+
+LOG_MODULE_REGISTER(ident, LOG_LEVEL_INF);
+
+namespace {
+    static constexpr float kBaseC       = 38.0f;
+    static constexpr float kBaseTol     = 0.10f;
+}
 
 namespace ident {
 
@@ -319,6 +323,18 @@ void Heater::Update(float temperature)
 
     duty_ = std::clamp(duty_, kMinDuty, kMaxDuty);
     (void)heater_pwm_.SetDuty(duty_);
+}
+
+/**
+ * @brief 预热 — 更新 PID 并判断温度是否达到稳态
+ * @param temperature 当前温度 (°C)
+ * @param dt_s        采样间隔 (s)
+ * @return true       温度稳定
+ */
+bool Heater::Preheat(float temperature, float dt_s)
+{
+    Update(temperature);
+    return stable_.Check(kTargetTemp, temperature, dt_s, kSlopeLimit, kNoiseLimit);
 }
 
 } // namespace heater

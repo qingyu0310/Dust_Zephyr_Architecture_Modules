@@ -40,7 +40,12 @@ protected:
     uart_config line_cfg_ {};      // 不同协议的 UART 参数（波特率/校验/数据位）
 };
 
-enum class Priority : uint8_t { High, Medium, Low };
+enum class Priority : uint8_t 
+{ 
+    High = 0, 
+    Medium, 
+    Low,
+};
 
 struct RemoteEntry {
     const char     *name;          // 协议名称
