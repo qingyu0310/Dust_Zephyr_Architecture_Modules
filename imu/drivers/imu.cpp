@@ -98,6 +98,8 @@ bool ImuManager::Init(ImuStartMode mode)
     }
 #endif // CONFIG_IMU_IDENTIFICATION
 
+    source_->LateInit();
+
     attitude_.Init();
 
     ready_ = true;

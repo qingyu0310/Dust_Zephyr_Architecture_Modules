@@ -9,6 +9,7 @@
 #pragma once
 
 #include <cstdint>
+#include "imu_device_layer.hpp"
 
 namespace icm42688p::reg {
 
@@ -142,17 +143,14 @@ constexpr uint8_t kWristCtrl3Default    = 0x93;
  * - accel_offset: m/s^2
  * - gyro_scale/accel_scale: 无量纲比例
  */
-static constexpr float kStaticGyroOffset[3]  {
-    -0.021454f, -0.010120f, -0.007212f
+static constexpr ::ImuOffsetData kStaticOffset {
+    { -0.021454f, -0.010120f, -0.007212f },
+    { 0.012893f, -5.538631f, 9.977686f }
 };
-static constexpr float kStaticGyroScale[3]   {
-    1.0f, 1.0f, 1.0f
-};
-static constexpr float kStaticAccelOffset[3] {
-    0.012893f, -5.538631f, 9.977686f
-};
-static constexpr float kStaticAccelScale[3]  {
-    1.0f, 1.0f, 1.0f
+
+static constexpr ::ImuScaleData kStaticScale {
+    { 1.0f, 1.0f, 1.0f },
+    { 1.0f, 1.0f, 1.0f }
 };
 
 } // namespace icm42688p::reg

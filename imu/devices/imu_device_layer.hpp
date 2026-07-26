@@ -12,6 +12,8 @@
 #include <stdint.h>
 #include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
+#include "partition.hpp"
+#include "w25q128.hpp"
 
 /**
  * @brief 一帧 IMU 工程量样本
@@ -36,6 +38,7 @@ public:
     virtual ~Source() = default;
 
     virtual bool Init() = 0;
+    virtual bool LateInit() = 0;
     virtual bool Read(Sample& sample) = 0;
     virtual bool Calibrate() { return true; }
 };
@@ -53,14 +56,21 @@ struct ImuRawSample
 };
 
 /**
- * @brief IMU 静态校准参数
+ * @brief IMU 零偏校准参数
  */
-struct ImuCalibData
+struct ImuOffsetData
 {
     float gyro_offset [3] = {0.0f, 0.0f, 0.0f};
-    float gyro_scale  [3] = {1.0f, 1.0f, 1.0f};
     float accel_offset[3] = {0.0f, 0.0f, 0.0f};
-    float accel_scale [3] = {1.0f, 1.0f, 1.0f};
+};
+
+/**
+ * @brief IMU 灵敏度比例
+ */
+struct ImuScaleData
+{
+    float gyro_scale [3] = {1.0f, 1.0f, 1.0f};
+    float accel_scale[3] = {1.0f, 1.0f, 1.0f};
 };
 
 /**
@@ -69,12 +79,12 @@ struct ImuCalibData
  * 子类只需提供原始样本读取与工程量换算函数，
  * 基类自动处理校准参数维护和工程量转换。
  */
-class CalibratedImuSource : public Source
+class CalibSource : public Source
 {
 public:
     bool Calibrate() override
     {
-        constexpr uint32_t kCalibPeriodMs   = 1;
+        constexpr uint32_t kCalibPeriodUs   = 1000;
         constexpr uint32_t kCalibCnt        = 200;
         constexpr float    kGravity         = 9.807f;
 
@@ -97,7 +107,7 @@ public:
                 accel_sum[axis] += ConvertAccel(raw.accel[axis]);
             }
 
-            k_busy_wait(kCalibPeriodMs * 1000);
+            k_busy_wait(kCalibPeriodUs);
         }
 
         const float inv_samples = 1.0f / static_cast<float>(kCalibCnt);
@@ -105,7 +115,7 @@ public:
         float accel_norm_sq = 0.0f;
 
         for (uint8_t axis = 0; axis < 3; axis++) {
-            static_calibration_.gyro_offset[axis] = gyro_sum[axis] * inv_samples;
+            offset_.gyro_offset[axis] = gyro_sum[axis] * inv_samples;
             accel_mean[axis]  = accel_sum [axis]  * inv_samples;
             accel_norm_sq    += accel_mean[axis]  * accel_mean[axis];
         }
@@ -117,18 +127,28 @@ public:
 
             for (uint8_t axis = 0; axis < 3; axis++) {
                 const float expected_gravity = accel_mean[axis] * gravity_scale;
-                static_calibration_.accel_offset[axis] = accel_mean[axis] - expected_gravity;
+                offset_.accel_offset[axis] = accel_mean[axis] - expected_gravity;
             }
         }
 
         printk("calib gyro_off: %.6f %.6f %.6f\n",
-               (double)static_calibration_.gyro_offset[0],
-               (double)static_calibration_.gyro_offset[1],
-               (double)static_calibration_.gyro_offset[2]);
+               (double)offset_.gyro_offset[0],
+               (double)offset_.gyro_offset[1],
+               (double)offset_.gyro_offset[2]);
         printk("calib accel_off: %.6f %.6f %.6f\n",
-               (double)static_calibration_.accel_offset[0],
-               (double)static_calibration_.accel_offset[1],
-               (double)static_calibration_.accel_offset[2]);
+               (double)offset_.accel_offset[0],
+               (double)offset_.accel_offset[1],
+               (double)offset_.accel_offset[2]);
+
+        // 校准完成，写入 flash
+        if (EXEC_FLASH_WRITE(flash::kPartCalib.offset, &offset_, sizeof(ImuOffsetData))) {
+            printk("calib flash save ok\n");
+        } else {
+            printk("calib flash save failed\n");
+        }
+
+        calibrated_ = true;
+
         return true;
     }
 
@@ -145,11 +165,11 @@ public:
             const float gyro  = ConvertGyro (raw.gyro [axis]);
 
             sample.accel[axis] = Correct(accel,
-                                         static_calibration_.accel_offset[axis],
-                                         static_calibration_.accel_scale[axis]);
+                                         offset_.accel_offset[axis],
+                                         scale_.accel_scale[axis]);
             sample.gyro [axis] = Correct(gyro,
-                                         static_calibration_.gyro_offset[axis],
-                                         static_calibration_.gyro_scale[axis]);
+                                         offset_.gyro_offset[axis],
+                                         scale_.gyro_scale[axis]);
         }
 
         sample.temp = ConvertTemperature(raw.temp);
@@ -158,8 +178,6 @@ public:
     }
 
 protected:
-    ImuCalibData static_calibration_ {};
-
     virtual bool  ReadRaw(ImuRawSample& raw)      = 0;
     virtual float ConvertAccel(int16_t raw) const = 0;
     virtual float ConvertGyro(int16_t raw)  const = 0;
@@ -169,4 +187,10 @@ protected:
     {
         return (value - offset) * scale;
     }
+
+protected:
+    ImuOffsetData offset_ {};
+    ImuScaleData  scale_  {};
+
+    bool calibrated_ = false;
 };

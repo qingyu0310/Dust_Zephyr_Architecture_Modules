@@ -9,6 +9,7 @@
 #pragma once
 
 #include <cstdint>
+#include "imu_device_layer.hpp"
 
 namespace bmi088::reg {
 
@@ -70,17 +71,14 @@ static constexpr uint8_t kGyroDrdyInt3          = 0x01;
  * - accel_offset: m/s^2
  * - gyro_scale/accel_scale: 无量纲比例
  */
-static constexpr float kStaticGyroOffset[3]  {
-    0.00508663664f,   0.000101200138f,   0.00114515924f
+static constexpr ::ImuOffsetData kStaticOffset {
+    { 0.00508663664f, 0.000101200138f, 0.00114515924f },
+    { -0.000633206335f, 0.000943555031f, -0.128417715f }
 };
-static constexpr float kStaticGyroScale[3]   {
-    1.0f, 1.0f, 1.0f
-};
-static constexpr float kStaticAccelOffset[3] {
-    -0.000633206335f, 0.000943555031f,   -0.128417715f
-};
-static constexpr float kStaticAccelScale[3]  {
-    1.0f, 1.0f, 1.0f
+
+static constexpr ::ImuScaleData kStaticScale {
+    { 1.0f, 1.0f, 1.0f },
+    { 1.0f, 1.0f, 1.0f }
 };
 
 } // namespace bmi088::reg

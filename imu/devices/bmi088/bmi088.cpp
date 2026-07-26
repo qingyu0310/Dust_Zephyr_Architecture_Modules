@@ -9,6 +9,8 @@
 #include "bmi088.hpp"
 #include "bmi088_reg.hpp"
 #include "imu.hpp"
+#include "partition.hpp"
+#include "w25q128.hpp"
 
 #include <string.h>
 #include <zephyr/devicetree.h>
@@ -62,27 +64,14 @@ Bmi088::Bmi088()
 {
     constexpr uint32_t kSpiOperation = SPI_WORD_SET(8) | SPI_TRANSFER_MSB | SPI_MODE_CPOL | SPI_MODE_CPHA;
 
-    static const spi_dt_spec accel = SPI_DT_SPEC_GET(DT_ALIAS(bmi088_accel), kSpiOperation, 0);
-    static const spi_dt_spec gyro  = SPI_DT_SPEC_GET(DT_ALIAS(bmi088_gyro),  kSpiOperation, 0);
+    static const spi_dt_spec accel = SPI_DT_SPEC_GET(DT_ALIAS(bmi088_accel), kSpiOperation);
+    static const spi_dt_spec gyro  = SPI_DT_SPEC_GET(DT_ALIAS(bmi088_gyro),  kSpiOperation);
 
     config_.accel = &accel;
     config_.gyro  = &gyro;
 
-    for (uint8_t axis = 0; axis < 3; axis++)
-    {
-        config_.static_calibration.gyro_offset [axis] = reg::kStaticGyroOffset [axis];
-        config_.static_calibration.gyro_scale  [axis] = reg::kStaticGyroScale  [axis];
-        config_.static_calibration.accel_offset[axis] = reg::kStaticAccelOffset[axis];
-        config_.static_calibration.accel_scale [axis] = reg::kStaticAccelScale [axis];
-    }
-}
-
-/**
- * @brief 返回最近一次驱动错误码
- */
-Error Bmi088::LastError() const
-{
-    return last_error_;
+    offset_ = reg::kStaticOffset;
+    scale_  = reg::kStaticScale;
 }
 
 /**
@@ -143,6 +132,31 @@ bool Bmi088::ReadRaw(ImuRawSample& raw)
     }
 
     last_error_ = Error::None;
+    return true;
+}
+
+/**
+ * @brief 延迟初始化 — 从 flash 读取校准参数
+ *
+ * 如果已完成在线标定（calibrated_ == true），跳过。
+ * 否则尝试从 flash 分区读取零偏数据。flash 有有效数据时
+ * 覆盖 offset_ 并标记 calibrated_，后续不再跑自动标定。
+ */
+bool Bmi088::LateInit()
+{
+    if (calibrated_) return true;
+
+    ImuOffsetData calib{};
+    EXEC_FLASH_READ(flash::kPartCalib.offset, &calib, sizeof(ImuOffsetData));
+    if (calib.gyro_offset[0] != 0.0f || calib.gyro_offset[1] != 0.0f || calib.gyro_offset[2] != 0.0f) {
+        offset_ = calib;
+        calibrated_ = true;
+        LOG_INF("load calib from flash");
+    }
+    else {
+        LOG_INF("no calib data, use reg default");
+    }
+
     return true;
 }
 
@@ -232,26 +246,6 @@ bool Bmi088::InitGyro()
 }
 
 /**
- * @brief 向加速度计写一个寄存器
- */
-bool Bmi088::WriteAccel(uint8_t addr, uint8_t value)
-{
-    tx_[0] = addr & reg::kWriteFlag;
-    tx_[1] = value;
-    return accel_.Send(tx_, 2);
-}
-
-/**
- * @brief 向陀螺仪写一个寄存器
- */
-bool Bmi088::WriteGyro(uint8_t addr, uint8_t value)
-{
-    tx_[0] = addr & reg::kWriteFlag;
-    tx_[1] = value;
-    return gyro_.Send(tx_, 2);
-}
-
-/**
  * @brief 从加速度计读取连续寄存器
  */
 bool Bmi088::ReadAccel(uint8_t addr, uint8_t *data, uint32_t len)
@@ -302,22 +296,6 @@ bool Bmi088::ReadGyro(uint8_t addr, uint8_t *data, uint32_t len)
 }
 
 /**
- * @brief 读取一个加速度计寄存器
- */
-bool Bmi088::ReadAccelReg(uint8_t addr, uint8_t& value)
-{
-    return ReadAccel(addr, &value, 1);
-}
-
-/**
- * @brief 读取一个陀螺仪寄存器
- */
-bool Bmi088::ReadGyroReg(uint8_t addr, uint8_t& value)
-{
-    return ReadGyro(addr, &value, 1);
-}
-
-/**
  * @brief 写入加速度计寄存器并执行基本回读校验
  */
 bool Bmi088::WriteCheckedAccel(uint8_t addr, uint8_t value)
@@ -343,33 +321,8 @@ bool Bmi088::WriteCheckedGyro(uint8_t addr, uint8_t value)
     return ReadGyroReg(addr, readback) && readback == value;
 }
 
-/**
- * @brief 将原始加速度计数转换为工程量
- */
-float Bmi088::ConvertAccel(int16_t raw) const
-{
-    constexpr float kSens6g = 0.00179443359375f;
-    return static_cast<float>(raw) * kSens6g;
-}
-
-/**
- * @brief 将原始角速度计数转换为工程量
- */
-float Bmi088::ConvertGyro(int16_t raw) const
-{
-    constexpr float kSens2000Dps = 0.0010652644360316953f;
-    return static_cast<float>(raw) * kSens2000Dps;
-}
-
-/**
- * @brief 将原始温度计数转换为摄氏度
- */
-float Bmi088::ConvertTemperature(int16_t raw) const
-{
-    constexpr float kFactor = 0.125f, kOff = 23.0f;
-    return static_cast<float>(raw) * kFactor + kOff;
-}
-
 REGISTER_IMU(Bmi088, bmi088);
 
 } // namespace bmi088
+
+

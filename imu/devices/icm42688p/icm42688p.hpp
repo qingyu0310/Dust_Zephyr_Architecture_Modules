@@ -9,6 +9,7 @@
 #pragma once
 
 #include "imu_device_layer.hpp"
+#include "icm42688p_reg.hpp"
 #include "spi.hpp"
 
 #include <cstdint>
@@ -34,23 +35,20 @@ enum class Error : uint8_t
  * ICM42688P 使用单 SPI 设备访问，寄存器分段通过 `SEG_SEL` 切换。
  * 公共工程量转换、校准与读样流程由基类复用。
  */
-class Icm42688p final : public CalibratedImuSource
+class Icm42688p final : public CalibSource
 {
 public:
-    /**
-     * @brief ICM42688P 运行时配置
-     */
-    struct Config {
-        const struct spi_dt_spec *spi = nullptr;
-        ImuCalibData static_calibration {};
-    };
+    Icm42688p()
+    {
+        offset_ = reg::kStaticOffset;
+        scale_  = reg::kStaticScale;
+    }
 
-    Icm42688p();
     bool Init() override;
-    Error LastError() const;
+    bool LateInit() override;
+    Error LastError() const { return last_error_; }
 
 private:
-    Config  config_ {};
     Spi     spi_    {};
     Error   last_error_      = Error::None;
     uint8_t current_segment_ = 0xFFU;        // 当前寄存器段，0xFF 表示未选择
@@ -59,17 +57,43 @@ private:
     uint8_t tx_[kSpiBufferSize] {};
     uint8_t rx_[kSpiBufferSize] {};
 
-    bool  SoftReset          ();
-    bool  InitRegisters      ();
-    bool  SelectSegment      (uint8_t segment);
-    bool  ReadRaw            (ImuRawSample& raw) override;
-    bool  WriteReg           (uint8_t addr, uint8_t  value);
-    bool  ReadReg            (uint8_t addr, uint8_t& value);
-    bool  ReadRegs           (uint8_t addr, uint8_t  *data, uint32_t len);
-    bool  WriteChecked       (uint8_t addr, uint8_t  value);
-    float ConvertAccel       (int16_t raw) const override;
-    float ConvertGyro        (int16_t raw) const override;
-    float ConvertTemperature (int16_t raw) const override;
+    bool SoftReset          ();
+    bool InitRegisters      ();
+    bool SelectSegment      (uint8_t segment);
+    bool ReadRaw            (ImuRawSample& raw) override;
+
+    bool ReadRegs           (uint8_t addr, uint8_t  *data, uint32_t len);
+    bool WriteChecked       (uint8_t addr, uint8_t  value);
+
+    bool WriteReg(uint8_t addr, uint8_t value)
+    {
+        tx_[0] = addr;
+        tx_[1] = value;
+        return spi_.Send(tx_, 2);
+    }
+
+    bool ReadReg(uint8_t addr, uint8_t& value)
+    {
+        return ReadRegs(addr, &value, 1);
+    }
+
+    float ConvertAccel(int16_t raw) const override
+    {
+        constexpr float kSens16g = 16.0f / 32768.0f;
+        return static_cast<float>(raw) * kSens16g * 9.8f;
+    }
+
+    float ConvertGyro(int16_t raw) const override
+    {
+        constexpr float kSens2000Dps = 0.0010652644360316953f;
+        return static_cast<float>(raw) * kSens2000Dps;
+    }
+
+    float ConvertTemperature(int16_t raw) const override
+    {
+        constexpr float kFactor = 1.0f / 512.0f, kOff = 23.0f;
+        return static_cast<float>(raw) * kFactor + kOff;
+    }
 };
 
 } // namespace icm42688p

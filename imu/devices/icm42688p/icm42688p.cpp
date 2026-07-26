@@ -46,31 +46,6 @@ constexpr RegConfig kInitConfig[] {
 
 } // namespace
 
-Icm42688p::Icm42688p()
-{
-    constexpr uint32_t kSpiOperation = SPI_WORD_SET(8) | SPI_TRANSFER_MSB | SPI_MODE_CPOL | SPI_MODE_CPHA;
-
-    static const struct spi_dt_spec imu = SPI_DT_SPEC_GET(DT_ALIAS(imu_spi), kSpiOperation, 0);
-
-    config_.spi = &imu;
-
-    for (uint8_t axis = 0; axis < 3; axis++)
-    {
-        config_.static_calibration.gyro_offset [axis] = reg::kStaticGyroOffset [axis];
-        config_.static_calibration.gyro_scale  [axis] = reg::kStaticGyroScale  [axis];
-        config_.static_calibration.accel_offset[axis] = reg::kStaticAccelOffset[axis];
-        config_.static_calibration.accel_scale [axis] = reg::kStaticAccelScale [axis];
-    }
-}
-
-/**
- * @brief 返回最近一次驱动错误码
- */
-Error Icm42688p::LastError() const
-{
-    return last_error_;
-}
-
 /**
  * @brief 初始化 ICM42688P 并按需执行自动标定
  */
@@ -79,7 +54,10 @@ bool Icm42688p::Init()
     current_segment_ = 0xFFU;
     last_error_ = Error::None;
 
-    if (config_.spi == nullptr || !spi_.Init(*config_.spi)) {
+    constexpr uint32_t kSpiOperation = SPI_WORD_SET(8) | SPI_TRANSFER_MSB | SPI_MODE_CPOL | SPI_MODE_CPHA;
+    static const struct spi_dt_spec imu = SPI_DT_SPEC_GET(DT_ALIAS(imu_spi), kSpiOperation);
+
+    if (!spi_.Init(imu)) {
         LOG_ERR("SPI init failed");
         last_error_ = Error::DeviceNotReady;
         return false;
@@ -116,6 +94,32 @@ bool Icm42688p::Init()
         LOG_ERR("Init registers failed");
         last_error_ = Error::Config;
         return false;
+    }
+
+    return true;
+}
+
+/**
+ * @brief 延迟初始化 — 从 flash 读取校准参数
+ *
+ * 如果已完成在线标定（calibrated_ == true），跳过。
+ * 否则尝试从 flash 分区读取零偏数据。flash 有有效数据时
+ * 覆盖 offset_ 并标记 calibrated_，后续不再跑自动标定。
+ */
+bool Icm42688p::LateInit()
+{
+    if (calibrated_) return true;
+
+    ImuOffsetData calib{};
+    EXEC_FLASH_READ(flash::kPartCalib.offset, &calib, sizeof(ImuOffsetData));
+    
+    if (calib.gyro_offset[0] != 0.0f || calib.gyro_offset[1] != 0.0f || calib.gyro_offset[2] != 0.0f) {
+        offset_ = calib;
+        calibrated_ = true;
+        LOG_INF("load calib from flash");
+    } 
+    else {
+        LOG_INF("no calib data, use reg default");
     }
 
     return true;
@@ -213,24 +217,6 @@ bool Icm42688p::SelectSegment(uint8_t segment)
 }
 
 /**
- * @brief 写一个寄存器
- */
-bool Icm42688p::WriteReg(uint8_t addr, uint8_t value)
-{
-    tx_[0] = addr;
-    tx_[1] = value;
-    return spi_.Send(tx_, 2);
-}
-
-/**
- * @brief 读一个寄存器
- */
-bool Icm42688p::ReadReg(uint8_t addr, uint8_t& value)
-{
-    return ReadRegs(addr, &value, 1);
-}
-
-/**
  * @brief 通过一次 SPI transceive 连续读取多个寄存器
  */
 bool Icm42688p::ReadRegs(uint8_t addr, uint8_t *data, uint32_t len)
@@ -265,33 +251,6 @@ bool Icm42688p::WriteChecked(uint8_t addr, uint8_t value)
 
     k_busy_wait(1000);
     return ReadReg(addr, readback) && readback == value;
-}
-
-/**
- * @brief 将原始加速度计数转换为工程量
- */
-float Icm42688p::ConvertAccel(int16_t raw) const
-{
-    constexpr float kSens16g = 16.0f / 32768.0f;
-    return static_cast<float>(raw) * kSens16g * 9.8f;
-}
-
-/**
- * @brief 将原始角速度计数转换为工程量
- */
-float Icm42688p::ConvertGyro(int16_t raw) const
-{
-    constexpr float kSens2000Dps = 0.0010652644360316953f;
-    return static_cast<float>(raw) * kSens2000Dps;
-}
-
-/**
- * @brief 将原始温度计数转换为摄氏度
- */
-float Icm42688p::ConvertTemperature(int16_t raw) const
-{
-    constexpr float kFactor = 1.0f / 512.0f, kOff = 23.0f;
-    return static_cast<float>(raw) * kFactor + kOff;
 }
 
 REGISTER_IMU(Icm42688p, icm42688p);
