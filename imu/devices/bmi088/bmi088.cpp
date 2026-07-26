@@ -370,6 +370,6 @@ float Bmi088::ConvertTemperature(int16_t raw) const
     return static_cast<float>(raw) * kFactor + kOff;
 }
 
-} // namespace bmi088
+REGISTER_IMU(Bmi088, bmi088);
 
-REGISTER_IMU(bmi088::Bmi088, bmi088)
+} // namespace bmi088

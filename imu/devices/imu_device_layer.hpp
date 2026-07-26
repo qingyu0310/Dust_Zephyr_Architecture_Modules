@@ -55,7 +55,7 @@ struct ImuRawSample
 /**
  * @brief IMU 静态校准参数
  */
-struct ImuCalibration
+struct ImuCalibData
 {
     float gyro_offset [3] = {0.0f, 0.0f, 0.0f};
     float gyro_scale  [3] = {1.0f, 1.0f, 1.0f};
@@ -158,7 +158,7 @@ public:
     }
 
 protected:
-    ImuCalibration static_calibration_ {};
+    ImuCalibData static_calibration_ {};
 
     virtual bool  ReadRaw(ImuRawSample& raw)      = 0;
     virtual float ConvertAccel(int16_t raw) const = 0;

@@ -42,7 +42,7 @@ public:
      */
     struct Config {
         const struct spi_dt_spec *spi = nullptr;
-        ImuCalibration static_calibration {};
+        ImuCalibData static_calibration {};
     };
 
     Icm42688p();

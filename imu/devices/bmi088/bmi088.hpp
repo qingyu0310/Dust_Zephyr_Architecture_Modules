@@ -47,7 +47,7 @@ public:
     struct Config {
         const struct spi_dt_spec *accel = nullptr;
         const struct spi_dt_spec *gyro = nullptr;
-        ImuCalibration static_calibration {};
+        ImuCalibData static_calibration {};
     };
 
     Bmi088();
