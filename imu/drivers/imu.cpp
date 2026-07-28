@@ -58,10 +58,18 @@ bool ImuManager::InitSource()
 /**
  * @brief 初始化 IMU 管理器
  *
- * 按依赖顺序串联各子模块：选择数据源 → 初始化驱动 → 初始化加热器
- * → 可选的预热与静态校准 → 初始化姿态解算器。
+ * 按依赖顺序串联各子模块：
+ * 选择数据源 → 初始化驱动 → 初始化加热器
+ * → 可选自动校准（AutoCalib）或辨识（AutoIdent）
+ * → LateInit：flash 有校准数据则加载，无则保持 reg 默认
+ * → 初始化姿态解算器。
  *
- * @param enable_auto_calibration 是否在启动阶段执行预热后的静态校准
+ * 校准数据优先级：
+ * - AutoCalib 模式：在线采集 → 计算 offset → 写入 flash
+ * - Normal 模式：不跑 Calibrate，由 LateInit 决定是否从 flash 加载
+ * - 既无 flash 数据也未跑 Calibrate：使用 reg 出厂默认值
+ *
+ * @param mode ImuStartMode::Normal / AutoCalib / AutoIdent
  */
 bool ImuManager::Init(ImuStartMode mode)
 {

@@ -21,7 +21,7 @@ if(CONFIG_MOD_DEV_IMU)
 endif()
 
 if(CONFIG_MOD_DEV_MOTOR_DJI)
-	target_sources(app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/motors/dji/dji.cpp)
+	target_sources(app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/motors/dji/dji_c6xx.cpp)
 	target_include_directories(app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/motors/dji)
 endif()
 

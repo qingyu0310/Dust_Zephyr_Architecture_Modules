@@ -117,7 +117,7 @@ bool Icm42688p::LateInit()
         offset_ = calib;
         calibrated_ = true;
         LOG_INF("load calib from flash");
-    } 
+    }
     else {
         LOG_INF("no calib data, use reg default");
     }
