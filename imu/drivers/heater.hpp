@@ -10,7 +10,6 @@
 
 #include "pid.hpp"
 #include "pwm.hpp"
-#include "stability.hpp"
 
 #ifdef CONFIG_MOD_DEV_IMU_IDENT
 
@@ -66,9 +65,6 @@ namespace heater {
 class Heater final
 {
 public:
-    static constexpr float   kSlopeLimit = 0.02f;
-    static constexpr float   kNoiseLimit = 0.1f;
-
     bool  Init();
     void  Update(float temperature);
     float GetDuty()        const { return duty_; }
@@ -80,7 +76,6 @@ private:
         AutoIdent,
     };
 
-    stability::MeanStable<100,3> stable_ {};
     Pwm           heater_pwm_ {};
     alg::pid::Pid pid_        {};
 

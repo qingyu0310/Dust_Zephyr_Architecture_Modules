@@ -9,17 +9,19 @@
 #include "heater.hpp"
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 #include <zephyr/devicetree.h>
 #include <zephyr/kernel.h>
 #include <zephyr/drivers/pwm.h>
 #include <zephyr/logging/log.h>
+#include "stability.hpp"
 
 LOG_MODULE_REGISTER(heater, LOG_LEVEL_INF);
 
 namespace {
     static constexpr float kMaxDuty     = 0.95f;
-    static constexpr float kMinDuty     = 0.01f;
+    static constexpr float kMinDuty     = 0.0f;
     static constexpr float kTargetTemp  = 40.0f;
 
     static constexpr alg::pid::Pid::Config kPidConfig {
@@ -338,8 +340,28 @@ void Heater::Update(float temperature)
  */
 bool Heater::Preheat(float temperature, float dt_s)
 {
+    static stability::WinStable<200> *stable = nullptr;
+
+    if (stable == nullptr) {
+        stable = static_cast<stability::WinStable<200>*>(calloc(1, sizeof(stability::WinStable<200>)));
+    }
+    constexpr float kSlopeLimit = 2.0f;     // 允许最大斜率 (°C/s)
+    constexpr float kNoiseLimit = 0.5f;     // 允许最大峰峰 (°C)
+    constexpr float kDriftLimit = 0.1f;     // 允许窗口净漂移 (°C)，区分振荡与单向下漂
+    constexpr float kTargetTol  = 0.5f;     // 目标温度容差 (°C)
+
     Update(temperature);
-    return stable_.Check(kTargetTemp, temperature, dt_s, kSlopeLimit, kNoiseLimit);
+    const bool near_target = std::abs(temperature - kTargetTemp) <= kTargetTol;
+    const bool stable_ok = stable->Check(temperature, dt_s, kSlopeLimit, 
+							kNoiseLimit, kDriftLimit) && near_target;
+
+    if (stable_ok) {
+        LOG_INF("preheat stable");
+        free(stable);
+        stable = nullptr;
+    }
+
+    return stable_ok;
 }
 
 } // namespace heater

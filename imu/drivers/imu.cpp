@@ -53,8 +53,8 @@ bool ImuManager::Init(ImuStartMode mode)
         return false;
     }
 
-    // LOG_INF("start preheat");
-    // Preheat();
+    LOG_INF("start preheat");
+    Preheat();
 
     if (mode == ImuStartMode::AutoCalib)
     {
@@ -113,8 +113,8 @@ void ImuManager::Task()
         }
 
         log_timer_.Clock([&]()  {
-            // printk("%f,%f,%f\n", (double)pub_.roll, (double)pub_.pitch, (double)pub_.yaw);
-            printk("%f, %f\n", (double)sample_.temp, (double)heater_.GetDuty());
+            printk("%f,%f,%f\n", (double)pub_.roll, (double)pub_.pitch, (double)pub_.yaw);
+            // printk("%f, %f\n", (double)sample_.temp, (double)heater_.GetDuty());
         });
         
         k_msleep(1);
@@ -165,6 +165,20 @@ bool ImuManager::Preheat()
 
     const uint32_t Start_ms = k_uptime_get();
 
+    // 用真实经过时间算采样间隔，避免 IMU 输出率/日志开销导致 dt 虚高
+    const auto kMeasureDT = [&]() -> float
+    {
+        static uint32_t last_cycle = 0;
+        const uint32_t now_cycle = k_cycle_get_32();
+        if (last_cycle == 0) {
+            last_cycle = now_cycle;
+            return 0.001f;
+        }
+        const uint64_t delta_ns = k_cyc_to_ns_floor64(now_cycle - last_cycle);
+        last_cycle = now_cycle;
+        return (delta_ns == 0) ? 0.001f : static_cast<float>(delta_ns) * 1.0e-9f;
+    };
+
     log_timer_.SetPeriod(10);
 
     while (true)
@@ -176,7 +190,7 @@ bool ImuManager::Preheat()
             continue;
         }
 
-        if (heater_.Preheat(sample_.temp, kWaitUs * 1e-6f)) {
+        if (heater_.Preheat(sample_.temp, kMeasureDT())) {
             return true;
         }
 
