@@ -79,18 +79,23 @@ constexpr uint8_t kStepCounterH         = 0x3D;
 constexpr uint8_t kAoi12Cfg             = 0x3F;
 
 constexpr uint8_t kAccConf              = 0x40;
-constexpr uint8_t kAccConfDefault       = 0xA8;
+constexpr uint8_t kAccConfDefault       = 0xA8;         // ACC_BWP=101(Reserved), ACC_ODR=1000(100Hz)
 constexpr uint8_t kAccRange             = 0x41;
-constexpr uint8_t kAccRangeDefault      = 0x02;
+constexpr uint8_t kAccRangeDefault      = 0x03;         // FS[1:0]=11 => ±16G
+                                                        // 00=±2G  01=±4G  10=±8G  11=±16G
 constexpr uint8_t kGyrConf              = 0x42;
-constexpr uint8_t kGyrConfDefault       = 0xA9;
+constexpr uint8_t kGyrConfDefault       = 0xA9;         // GYR_NOISE_PERF=0(未使能), GYR_BWP=10, GYR_ODR=1001(200Hz)
+constexpr uint8_t kGyrConfNoiseOpt      = 0xC9;         // GYR_NOISE_PERF=1(使能), GYR_FILTER_PERF=1
 constexpr uint8_t kGyrRange             = 0x43;
+constexpr uint8_t kGyrRangeDefault      = 0x00;         // FS[2:0]=000 => ±2000dps
+                                                        // 000=±2000  001=±1000  010=±500  011=±250  100=±125(dps)
 constexpr uint8_t kFifoDowns            = 0x45;
 constexpr uint8_t kFifoDownsDefault     = 0x88;
 constexpr uint8_t kSoftRstReg           = 0x4A;
 constexpr uint8_t kAccSelfTest          = 0x6D;
 constexpr uint8_t kGyrSelfTest          = 0x6F;
 constexpr uint8_t kPwrCtrl              = 0x7D;
+constexpr uint8_t kPwrOff               = 0x00;         // accel + gyro + temp 全部下电
 constexpr uint8_t kPwrOnAll             = 0x0F;         // accel + gyro + temp 全部上电
 
 // Special Register 1

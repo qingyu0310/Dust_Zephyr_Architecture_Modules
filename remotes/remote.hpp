@@ -132,7 +132,7 @@ private:
     }
 };
 
-#define REGISTER_REMOTE(RemoteType, frame_size_, priority_, lock_score_, name_)    \
+#define REGISTER_REMOTE(RemoteType, frame_size_, priority_, lock_score_, name_)     \
     static RemoteType kRemoteProtocol_##name_;                                      \
     static const remote::RemoteEntry kRemoteEntry_##name_                           \
     __attribute__((used, __section__(".remote"))) = { #name_, frame_size_, &kRemoteProtocol_##name_, priority_, lock_score_ }

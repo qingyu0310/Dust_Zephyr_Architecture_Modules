@@ -20,40 +20,7 @@ LOG_MODULE_REGISTER(imu, LOG_LEVEL_INF);
 extern const imu::ImuEntry __imu_start[];
 extern const imu::ImuEntry __imu_end[];
 
-/**
- * @brief imu
- *
- */
 namespace imu {
-
-/**
- * @brief 根据注册表选择底层 IMU 数据源
- *
- * 遍历 .imu linker section 中的 ImuEntry，要求恰好注册一个设备。
- * 0 个报错，2+ 报错，仅 1 个时调用 Init()。
- *
- * @return 是否成功选定并初始化数据源
- */
-bool ImuManager::InitSource()
-{
-    ptrdiff_t count = __imu_end - __imu_start;
-
-    if (count == 0) {
-        LOG_ERR("no imu registered");
-        return false;
-    }
-
-    if (count > 1) {
-        LOG_ERR("multiple imu registered (%td), only one allowed", count);
-        return false;
-    }
-
-    const ImuEntry *e = __imu_start;
-    LOG_INF("init %s ...", e->name);
-
-    source_ = e->source;
-    return source_->Init();
-}
 
 /**
  * @brief 初始化 IMU 管理器
@@ -85,7 +52,6 @@ bool ImuManager::Init(ImuStartMode mode)
         LOG_ERR("heater init failed");
         return false;
     }
-    heater_.SetMode(heater::Mode::ClosedLoop);
 
     // LOG_INF("start preheat");
     // Preheat();
@@ -98,13 +64,6 @@ bool ImuManager::Init(ImuStartMode mode)
         }
         LOG_INF("calibrate done");
     }
-#ifdef CONFIG_IMU_IDENTIFICATION
-    else if (mode == ImuStartMode::AutoIdent)
-    {
-        heater_.SetMode(heater::Mode::AutoIdent);
-        LOG_INF("set autoident mode");
-    }
-#endif // CONFIG_IMU_IDENTIFICATION
 
     source_->LateInit();
 
@@ -135,7 +94,7 @@ void ImuManager::Task()
         return (delta_ns == 0) ? sample_.dt : static_cast<float>(delta_ns) * 1.0e-9f;
     };
 
-    log_timer_.SetPeriod(10);
+    log_timer_.SetPeriod(1);
 
     for (;;)
     {
@@ -149,21 +108,46 @@ void ImuManager::Task()
             heater_.Update(sample_.temp);
 
             attitude_.Process(sample_, pub_);
-
+            
             // zbus_chan_pub(&pub_imu_to, &pub_, K_MSEC(1));
         }
 
-        log_timer_.Clock([&]()
-        {
-            if (heater_.GetMode() == heater::Mode::ClosedLoop)
-            {
-                // LOG_INF("%f,%f,%f", (double)pub_.roll, (double)pub_.pitch, (double)pub_.yaw);
-                // LOG_INF("%f,%f", (double)sample_.temp, (double)heater_.GetDuty());
-            }
+        log_timer_.Clock([&]()  {
+            // printk("%f,%f,%f\n", (double)pub_.roll, (double)pub_.pitch, (double)pub_.yaw);
+            printk("%f, %f\n", (double)sample_.temp, (double)heater_.GetDuty());
         });
         
         k_msleep(1);
     }
+}
+
+/**
+ * @brief 根据注册表选择底层 IMU 数据源
+ *
+ * 遍历 .imu linker section 中的 ImuEntry，要求恰好注册一个设备。
+ * 0 个报错，2+ 报错，仅 1 个时调用 Init()。
+ *
+ * @return 是否成功选定并初始化数据源
+ */
+bool ImuManager::InitSource()
+{
+    ptrdiff_t count = __imu_end - __imu_start;
+
+    if (count == 0) {
+        LOG_ERR("no imu registered");
+        return false;
+    }
+
+    if (count > 1) {
+        LOG_ERR("multiple imu registered (%td), only one allowed", count);
+        return false;
+    }
+
+    const ImuEntry *e = __imu_start;
+    LOG_INF("init %s ...", e->name);
+
+    source_ = e->source;
+    return source_->Init();
 }
 
 /**

@@ -19,9 +19,8 @@ namespace attitude {
  */
 void Processor::Init()
 {
-    constexpr float kDefaultAccelLpfTimeConstant = 0.02f;
-    alg::attitude::QuaternionEkf::Config cfg {};
-    cfg.alpha = kDefaultAccelLpfTimeConstant;
+    alg::attitude::QuaternionEkf::Config cfg;
+
     ekf_.Init(cfg);
 }
 

@@ -147,7 +147,10 @@ bool Bmi088::LateInit()
     if (calibrated_) return true;
 
     ImuOffsetData calib{};
-    EXEC_FLASH_READ(flash::kPartCalib.offset, &calib, sizeof(ImuOffsetData));
+    if (!EXEC_FLASH_READ(flash::kPartCalib.offset, &calib, sizeof(ImuOffsetData))) {
+        LOG_ERR("read calib from flash failed");
+    }
+
     if (calib.gyro_offset[0] != 0.0f || calib.gyro_offset[1] != 0.0f || calib.gyro_offset[2] != 0.0f) {
         offset_ = calib;
         calibrated_ = true;

@@ -15,9 +15,11 @@
 #include <zephyr/drivers/pwm.h>
 #include <zephyr/logging/log.h>
 
+LOG_MODULE_REGISTER(heater, LOG_LEVEL_INF);
+
 namespace {
     static constexpr float kMaxDuty     = 0.95f;
-    static constexpr float kMinDuty     = 0.001f;        // PWM最小不能为0
+    static constexpr float kMinDuty     = 0.01f;
     static constexpr float kTargetTemp  = 40.0f;
 
     static constexpr alg::pid::Pid::Config kPidConfig {
@@ -33,8 +35,6 @@ namespace {
 #ifdef CONFIG_IMU_IDENTIFICATION
 
 #pragma message "Compiling Modules/Imu/Drivers/Ident"
-
-LOG_MODULE_REGISTER(ident, LOG_LEVEL_INF);
 
 namespace {
     static constexpr float kBaseC       = 38.0f;
@@ -214,9 +214,8 @@ void Identifier::CheckCmd()
  */
 bool Identifier::Init()
 {
-    RxStream::Config cfg {};
-    cfg.buf_size   = 256;
-    cfg.rx_timeout = 1000;
+    UartDma::Config cfg {};
+    cfg.base_cfg.rx_timeout = 1000;
 
     pid_.Init(kPidConfig);
 
@@ -288,10 +287,16 @@ bool Heater::Init()
     duty_ = kMinDuty;
     initialized_ = true;
 
+    mode_ = Mode::ClosedLoop;
+
 #ifdef CONFIG_IMU_IDENTIFICATION
     if (!ident_.Init()) {
+        LOG_ERR("ident init failed");
+        heater_pwm_.SetDuty(duty_);
         return false;
     }
+    mode_ = Mode::AutoIdent;
+    LOG_INF("auto ident enabled");
 #endif // CONFIG_IMU_IDENTIFICATION
 
     return heater_pwm_.SetDuty(duty_);

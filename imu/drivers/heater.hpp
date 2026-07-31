@@ -17,10 +17,6 @@
 #include "stability.hpp"
 #include "uart.hpp"
 
-namespace {
-    static constexpr float kTargetTemp  = 40.0f;         // 目标温度
-}
-
 namespace ident {
 
 enum class IdentStage : uint8_t {
@@ -67,25 +63,22 @@ private:
 
 namespace heater {
 
-enum class Mode : uint8_t {
-    ClosedLoop = 0,     // PID 闭环控温
-    AutoIdent,          // 自动辨识
-};
-
 class Heater final
 {
 public:
-    static constexpr float   kSlopeLimit = 0.02f;           // 斜率限 (°C/s)
-    static constexpr float   kNoiseLimit = 0.1f;            // 极差限 (°C)
+    static constexpr float   kSlopeLimit = 0.02f;
+    static constexpr float   kNoiseLimit = 0.1f;
 
     bool  Init();
     void  Update(float temperature);
-    void  SetMode(Mode mode)     { mode_ = mode; }
-    Mode  GetMode()        const { return mode_; }
     float GetDuty()        const { return duty_; }
     bool  Preheat(float temperature, float dt_s);
 
 private:
+    enum class Mode : uint8_t {
+        ClosedLoop = 0,
+        AutoIdent,
+    };
 
     stability::MeanStable<100,3> stable_ {};
     Pwm           heater_pwm_ {};

@@ -111,7 +111,9 @@ bool Icm42688p::LateInit()
     if (calibrated_) return true;
 
     ImuOffsetData calib{};
-    EXEC_FLASH_READ(flash::kPartCalib.offset, &calib, sizeof(ImuOffsetData));
+    if (!EXEC_FLASH_READ(flash::kPartCalib.offset, &calib, sizeof(ImuOffsetData))) {
+        LOG_ERR("read calib from flash failed");
+    }
     
     if (calib.gyro_offset[0] != 0.0f || calib.gyro_offset[1] != 0.0f || calib.gyro_offset[2] != 0.0f) {
         offset_ = calib;
@@ -149,7 +151,7 @@ bool Icm42688p::ReadRaw(ImuRawSample& raw)
     raw.gyro [1] = static_cast<int16_t>((static_cast<uint16_t>(motion_data[8])  << 8) | static_cast<uint16_t>(motion_data[9]));
     raw.gyro [2] = static_cast<int16_t>((static_cast<uint16_t>(motion_data[10]) << 8) | static_cast<uint16_t>(motion_data[11]));
 
-    raw.temp     = static_cast<int16_t>((static_cast<uint16_t>(temp_data[0]) << 8) | static_cast<uint16_t>(temp_data[1]));
+    raw.temp     = static_cast<int16_t>((static_cast<uint16_t>(temp_data[0])    << 8) | static_cast<uint16_t>(temp_data[1]));
 
     last_error_ = Error::None;
     return true;
@@ -191,8 +193,16 @@ bool Icm42688p::InitRegisters()
     if (!WriteChecked(reg::kPwrCtrl, reg::kPwrOnAll)) {
         return false;
     }
-
     k_busy_wait(50000);
+
+    // GYR_NOISE_PERF 配置序列：先关电源 → 写 GYR_CONF → 重新上电
+    if (!WriteReg(reg::kPwrCtrl, reg::kPwrOff) ||
+        !WriteChecked(reg::kGyrConf, reg::kGyrConfNoiseOpt) ||
+        !WriteReg(reg::kPwrCtrl, reg::kPwrOnAll)) {
+        return false;
+    }
+    k_busy_wait(50000);
+
     return true;
 }
 
@@ -256,5 +266,4 @@ bool Icm42688p::WriteChecked(uint8_t addr, uint8_t value)
 REGISTER_IMU(Icm42688p, icm42688p);
 
 } // namespace icm42688p
-
 

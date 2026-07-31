@@ -28,16 +28,13 @@ enum class ImuStartMode : uint8_t
 {
     Normal = 0,         // 开环启动，用于调试
     AutoCalib,          // 自动校准，设置陀螺仪偏置
-#if CONFIG_IMU_IDENTIFICATION
-    AutoIdent,          // 自动辨识，配合脚本使用
-#endif  // CONFIG_IMU_IDENTIFICATION
 };
 
 class ImuManager final
 {
 public:
     bool Init(ImuStartMode mode = ImuStartMode::Normal);
-
+    
     bool Start(ThreadPrio prio = ThreadPrio::Normal)
     {
         if (!ready_) {
@@ -46,6 +43,8 @@ public:
         thread_.Start(TaskEntry, prio, this);
         return true;
     }
+
+    bool ReadSample(Sample& sample) { return source_->Read(sample); }
 
 private:
     Source                  *source_    = nullptr;
