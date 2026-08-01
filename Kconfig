@@ -1,108 +1,108 @@
 # modules/Kconfig - hardware-facing modules built on top of drivers/topics
 
-config MOD_DEV_IMU
+config DUST_MOD_DEV_IMU
     bool "IMU module"
     default n
-    select FLT_QUATERNION
-    select TPC_IMU_TO
-    select DEV_PWM
-    select CTL_PID
-    select CTL_TIMER
-    select ID_STABILITY
+    select DUST_FLT_QUATERNION
+    select DUST_TPC_IMU_TO
+    select DUST_DEV_PWM
+    select DUST_CTL_PID
+    select DUST_CTL_TIMER
+    select DUST_ID_STABILITY
     help
         IMU source decoupling, attitude EKF and zbus publish layer.
 
-config MOD_DEV_IMU_BMI088
+config DUST_MOD_DEV_IMU_BMI088
     bool "BMI088 IMU source"
     default n
-    depends on MOD_DEV_IMU
-    select COM_SPI
+    depends on DUST_MOD_DEV_IMU
+    select DUST_COM_SPI
     help
         BMI088 source implementation for the IMU module.
 
-config MOD_DEV_IMU_ICM42688P
+config DUST_MOD_DEV_IMU_ICM42688P
     bool "ICM42688P IMU source"
     default n
-    depends on MOD_DEV_IMU
-    select COM_SPI
+    depends on DUST_MOD_DEV_IMU
+    select DUST_COM_SPI
     help
         ICM42688P source implementation for the IMU module.
 
-config MOD_DEV_IMU_IDENT
+config DUST_MOD_DEV_IMU_IDENT
     bool "IMU open-loop identification"
     default n
-    select ID_STABILITY
-    select COM_UART_DMA
+    select DUST_ID_STABILITY
+    select DUST_COM_UART_DMA
     help
         IMU heater duty-step open-loop identification.
 
-config MOD_DEV_MOTOR_DJI
+config DUST_MOD_DEV_MOTOR_DJI
     bool "DJI motor"
     default n
-    select COM_CAN
+    select DUST_COM_CAN
     help
         DJI motor module.
 
-config MOD_DEV_MOTOR_DM
+config DUST_MOD_DEV_MOTOR_DM
     bool "DM motor"
     default n
-    select COM_CAN
+    select DUST_COM_CAN
     help
         DM motor module.
 
-config MOD_DEV_POWERMETER
+config DUST_MOD_DEV_POWERMETER
     bool "Horizon power meter"
     default n
-    select COM_CAN
+    select DUST_COM_CAN
     help
         Horizon power meter module.
 
-config MOD_DEV_REMOTE
+config DUST_MOD_DEV_REMOTE
     bool "Remote receiver"
     default n
-    select COM_UART_DMA
-    select TPC_REMOTE_TO
+    select DUST_COM_UART_DMA
+    select DUST_TPC_REMOTE_TO
     help
         Remote receiver module.
 
-config MOD_DEV_REMOTE_DUAL
+config DUST_MOD_DEV_REMOTE_DUAL
     bool "Dual remote support"
     default n
-    depends on MOD_DEV_REMOTE
+    depends on DUST_MOD_DEV_REMOTE
     help
         Enable two independent remote receiver instances.
 
-config MOD_DEV_REMOTE_AUTO
+config DUST_MOD_DEV_REMOTE_AUTO
     bool "Auto link all protocols"
     default n
-    depends on MOD_DEV_REMOTE
+    depends on DUST_MOD_DEV_REMOTE
     help
         Automatically link all available protocol sources.
 
-config MOD_DEV_REMOTE_DR16
+config DUST_MOD_DEV_REMOTE_DR16
     bool "DR16 protocol"
     default n
-    depends on MOD_DEV_REMOTE
+    depends on DUST_MOD_DEV_REMOTE
     help
         DR16 remote protocol.
 
-config MOD_DEV_REMOTE_SBUS
+config DUST_MOD_DEV_REMOTE_SBUS
     bool "SBUS protocol"
     default n
-    depends on MOD_DEV_REMOTE
+    depends on DUST_MOD_DEV_REMOTE
     help
         SBUS remote protocol.
 
-config MOD_DEV_REMOTE_VT12
+config DUST_MOD_DEV_REMOTE_VT12
     bool "VT12 protocol"
     default n
-    depends on MOD_DEV_REMOTE
+    depends on DUST_MOD_DEV_REMOTE
     help
         VT12 remote protocol (mouse + keyboard).
 
-config MOD_DEV_REMOTE_VT13
+config DUST_MOD_DEV_REMOTE_VT13
     bool "VT13 protocol"
     default n
-    depends on MOD_DEV_REMOTE
+    depends on DUST_MOD_DEV_REMOTE
     help
         VT13 remote protocol (full-featured).

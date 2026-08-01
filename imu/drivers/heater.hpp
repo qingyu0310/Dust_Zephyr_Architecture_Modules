@@ -11,7 +11,7 @@
 #include "pid.hpp"
 #include "pwm.hpp"
 
-#ifdef CONFIG_MOD_DEV_IMU_IDENT
+#ifdef CONFIG_DUST_MOD_DEV_IMU_IDENT
 
 #include "stability.hpp"
 #include "uart.hpp"
@@ -58,7 +58,7 @@ private:
 
 } // namespace ident
 
-#endif // CONFIG_MOD_DEV_IMU_IDENT
+#endif // CONFIG_DUST_MOD_DEV_IMU_IDENT
 
 namespace heater {
 
