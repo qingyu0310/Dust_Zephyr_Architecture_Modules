@@ -15,11 +15,10 @@
 #include <string.h>
 #include <zephyr/devicetree.h>
 #include <zephyr/kernel.h>
-#include <zephyr/logging/log.h>
+#include "log.hpp"
 
 #pragma message "Compiling Modules/Imu/Devices/BMI088"
 
-LOG_MODULE_REGISTER(bmi088, LOG_LEVEL_INF);
 
 namespace bmi088 {
 
@@ -82,19 +81,19 @@ bool Bmi088::Init()
     last_error_ = Error::None;
 
     if (config_.accel == nullptr || !accel_.Init(*config_.accel)) {
-        LOG_ERR("Accel SPI init failed");
+        DUST_LOG_ERR("Accel SPI init failed");
         last_error_ = Error::AccelNotReady;
         return false;
     }
 
     if (config_.gyro == nullptr  || !gyro_.Init(*config_.gyro)) {
-        LOG_ERR("Gyro SPI init failed");
+        DUST_LOG_ERR("Gyro SPI init failed");
         last_error_ = Error::GyroNotReady;
         return false;
     }
 
     if (!InitAccel() || !InitGyro()) {
-        LOG_ERR("Device init failed");
+        DUST_LOG_ERR("Device init failed");
         return false;
     }
 
@@ -148,16 +147,16 @@ bool Bmi088::LateInit()
 
     ImuOffsetData calib{};
     if (!EXEC_FLASH_READ(flash::kPartCalib.offset, &calib, sizeof(ImuOffsetData))) {
-        LOG_ERR("read calib from flash failed");
+        DUST_LOG_ERR("read calib from flash failed");
     }
 
     if (calib.gyro_offset[0] != 0.0f || calib.gyro_offset[1] != 0.0f || calib.gyro_offset[2] != 0.0f) {
         offset_ = calib;
         calibrated_ = true;
-        LOG_INF("load calib from flash");
+        DUST_LOG_INF("load calib from flash");
     }
     else {
-        LOG_INF("no calib data, use reg default");
+        DUST_LOG_INF("no calib data, use reg default");
     }
 
     return true;
@@ -178,7 +177,7 @@ bool Bmi088::InitAccel()
     k_busy_wait(1000);
 
     if (!WriteAccel(reg::kAccSoftReset, reg::kAccResetValue)) {
-        LOG_ERR("Accel soft reset failed");
+        DUST_LOG_ERR("Accel soft reset failed");
         last_error_ = Error::AccelConfig;
         return false;
     }
@@ -188,7 +187,7 @@ bool Bmi088::InitAccel()
     k_busy_wait(1000);
 
     if (!ReadAccelReg(reg::kAccChipId, chip_id) || chip_id != reg::kAccChipIdValue) {
-        LOG_ERR("Accel CHIP_ID mismatch, got 0x%02X", chip_id);
+        DUST_LOG_ERR("Accel CHIP_ID mismatch, got 0x%02X", chip_id);
         last_error_ = Error::AccelChipId;
         return false;
     }
@@ -196,7 +195,7 @@ bool Bmi088::InitAccel()
     for (const auto& cfg : kAccelConfig) 
     {
         if (!WriteCheckedAccel(cfg.reg, cfg.value)) {
-            LOG_ERR("Accel reg 0x%02X write failed", cfg.reg);
+            DUST_LOG_ERR("Accel reg 0x%02X write failed", cfg.reg);
             last_error_ = Error::AccelConfig;
             return false;
         }
@@ -220,7 +219,7 @@ bool Bmi088::InitGyro()
 
     if (!WriteGyro(reg::kGyroSoftReset, reg::kGyroResetValue)) 
     {
-        LOG_ERR("Gyro soft reset failed");
+        DUST_LOG_ERR("Gyro soft reset failed");
         last_error_ = Error::GyroConfig;
         return false;
     }
@@ -230,7 +229,7 @@ bool Bmi088::InitGyro()
     k_busy_wait(1000);
 
     if (!ReadGyroReg(reg::kGyroChipId, chip_id) || chip_id != reg::kGyroChipIdValue) {
-        LOG_ERR("Gyro CHIP_ID mismatch, got 0x%02X", chip_id);
+        DUST_LOG_ERR("Gyro CHIP_ID mismatch, got 0x%02X", chip_id);
         last_error_ = Error::GyroChipId;
         return false;
     }
@@ -238,7 +237,7 @@ bool Bmi088::InitGyro()
     for (const auto& cfg : kGyroConfig)
     {
         if (!WriteCheckedGyro(cfg.reg, cfg.value)) {
-            LOG_ERR("Gyro reg 0x%02X write failed", cfg.reg);
+            DUST_LOG_ERR("Gyro reg 0x%02X write failed", cfg.reg);
             last_error_ = Error::GyroConfig;
             return false;
         }

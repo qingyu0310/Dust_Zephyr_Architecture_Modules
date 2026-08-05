@@ -14,10 +14,9 @@
 #include <zephyr/devicetree.h>
 #include <zephyr/kernel.h>
 #include <zephyr/drivers/pwm.h>
-#include <zephyr/logging/log.h>
+#include "log.hpp"
 #include "stability.hpp"
 
-LOG_MODULE_REGISTER(heater, LOG_LEVEL_INF);
 
 namespace {
     static constexpr float kMaxDuty     = 0.95f;
@@ -69,7 +68,7 @@ void Identifier::ExecLoop(float temperature, Cmd cmd)
     if (temperature > kOverTempC) {
         duty_ = kMinDuty;
         state = IdentStage::SafetyStop;
-        LOG_INF("Safety Stop");
+        DUST_LOG_INF("Safety Stop");
         return;
     }
 
@@ -80,7 +79,7 @@ void Identifier::ExecLoop(float temperature, Cmd cmd)
         Reset();
     }
 
-    LOG_INF("seq=%u,t_us=%llu,dt_us=%u,stage=%u,state=%u,temp_c=%.3f,duty=%.3f",
+    DUST_LOG_INF("seq=%u,t_us=%llu,dt_us=%u,stage=%u,state=%u,temp_c=%.3f,duty=%.3f",
                (unsigned)++seq, (unsigned long long)t_us, (unsigned)dt_us,
                (unsigned)stage, (unsigned)state, (double)temperature, (double)duty_);
 
@@ -118,7 +117,7 @@ void Identifier::OpenLoop(float temperature, uint32_t dt_us, IdentStage& state, 
                 state = IdentStage::Heating;
                 duty_ = kDutySeq[stage];
                 stable_.Reset();
-                LOG_INF("Cooldown Done");
+                DUST_LOG_INF("Cooldown Done");
             }
             break;
         }
@@ -130,10 +129,10 @@ void Identifier::OpenLoop(float temperature, uint32_t dt_us, IdentStage& state, 
                 if (++stage < kNumStages) {
                     state = IdentStage::Cooldown;
                     stable_.Reset();
-                    LOG_INF("Stage Done");
+                    DUST_LOG_INF("Stage Done");
                 } else {
                     state = IdentStage::Finished;
-                    LOG_INF("Finished");
+                    DUST_LOG_INF("Finished");
                 }
             }
             break;
@@ -164,7 +163,7 @@ void Identifier::ClosedLoop(float temperature, uint32_t dt_us, IdentStage& state
             if (temperature < kBaseC || (temperature <= kBaseC + kBaseTol && stable_.Check(temperature, dt_us * 1e-6f))) {
                 state = IdentStage::Heating;
                 stable_.Reset();
-                LOG_INF("Cooldown Done");
+                DUST_LOG_INF("Cooldown Done");
             }
             break;
         }
@@ -222,7 +221,7 @@ bool Identifier::Init()
     pid_.Init(kPidConfig);
 
     if (!uart_.Init(DEVICE_DT_GET(DT_NODELABEL(uart3)), cfg)) {
-        LOG_ERR("uart3 init failed");
+        DUST_LOG_ERR("uart3 init failed");
         return false;
     }
     return true;
@@ -255,7 +254,7 @@ void Identifier::IdentLoop(float temperature)
     }
 
     if (prev_cmd_ == Cmd::StopIdent && active_cmd_ != Cmd::StopIdent) {
-        LOG_INF("Ident Starting");
+        DUST_LOG_INF("Ident Starting");
     }
     prev_cmd_ = active_cmd_;
 
@@ -293,12 +292,12 @@ bool Heater::Init()
 
 #ifdef CONFIG_IMU_IDENTIFICATION
     if (!ident_.Init()) {
-        LOG_ERR("ident init failed");
+        DUST_LOG_ERR("ident init failed");
         heater_pwm_.SetDuty(duty_);
         return false;
     }
     mode_ = Mode::AutoIdent;
-    LOG_INF("auto ident enabled");
+    DUST_LOG_INF("auto ident enabled");
 #endif // CONFIG_IMU_IDENTIFICATION
 
     return heater_pwm_.SetDuty(duty_);
@@ -356,7 +355,7 @@ bool Heater::Preheat(float temperature, float dt_s)
 							kNoiseLimit, kDriftLimit) && near_target;
 
     if (stable_ok) {
-        LOG_INF("preheat stable");
+        DUST_LOG_INF("preheat stable");
         free(stable);
         stable = nullptr;
     }

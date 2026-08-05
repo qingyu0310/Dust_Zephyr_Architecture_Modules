@@ -11,11 +11,10 @@
 #include <cstddef>
 #include <zephyr/kernel.h>
 #include <zephyr/devicetree.h>
-#include <zephyr/logging/log.h>
+#include "log.hpp"
 
 #pragma message "Compiling Modules/Imu/Drivers/Imu"
 
-LOG_MODULE_REGISTER(imu, LOG_LEVEL_INF);
 
 extern const imu::ImuEntry __imu_start[];
 extern const imu::ImuEntry __imu_end[];
@@ -43,26 +42,26 @@ bool ImuManager::Init(ImuStartMode mode)
     ready_ = false;
 
     if (!InitSource()) {
-        LOG_ERR("InitSource failed");
+        DUST_LOG_ERR("InitSource failed");
         return false;
     }
-    LOG_INF("InitSource done");
+    DUST_LOG_INF("InitSource done");
 
     if (!heater_.Init()) {
-        LOG_ERR("heater init failed");
+        DUST_LOG_ERR("heater init failed");
         return false;
     }
 
-    LOG_INF("start preheat");
+    DUST_LOG_INF("start preheat");
     Preheat();
 
     if (mode == ImuStartMode::AutoCalib)
     {
         if (!source_->Calibrate()) { 
-            LOG_ERR("calibrate failed"); 
+            DUST_LOG_ERR("calibrate failed"); 
             return false; 
         }
-        LOG_INF("calibrate done");
+        DUST_LOG_INF("calibrate done");
     }
 
     source_->LateInit();
@@ -70,7 +69,7 @@ bool ImuManager::Init(ImuStartMode mode)
     attitude_.Init();
 
     ready_ = true;
-    LOG_INF("imu ready");
+    DUST_LOG_INF("imu ready");
     
     return true;
 }
@@ -134,17 +133,17 @@ bool ImuManager::InitSource()
     ptrdiff_t count = __imu_end - __imu_start;
 
     if (count == 0) {
-        LOG_ERR("no imu registered");
+        DUST_LOG_ERR("no imu registered");
         return false;
     }
 
     if (count > 1) {
-        LOG_ERR("multiple imu registered (%td), only one allowed", count);
+        DUST_LOG_ERR("multiple imu registered (%td), only one allowed", count);
         return false;
     }
 
     const ImuEntry *e = __imu_start;
-    LOG_INF("init %s ...", e->name);
+    DUST_LOG_INF("init %s ...", e->name);
 
     source_ = e->source;
     return source_->Init();
@@ -196,11 +195,11 @@ bool ImuManager::Preheat()
 
         // 预热打印，用于判断是否被稳定判据卡住
         log_timer_.Clock([&](){
-            LOG_INF("%f,%f", (double)sample_.temp, (double)heater_.GetDuty());
+            DUST_LOG_INF("%f,%f", (double)sample_.temp, (double)heater_.GetDuty());
         });
 
         if (k_uptime_get() - Start_ms >= kTimeoutMs) {
-            LOG_ERR("preheat timeout");
+            DUST_LOG_ERR("preheat timeout");
             return false;
         }
 

@@ -11,11 +11,10 @@
 
 #include "protocol_base.hpp"
 #include "remote.hpp"
-#include <zephyr/logging/log.h>
+#include "log.hpp"
 
 using namespace topic::remote_to;
 
-LOG_MODULE_REGISTER(sbus, LOG_LEVEL_INF);
 
 namespace sbus {
 
@@ -115,7 +114,7 @@ bool SbusProtocol::Decode(const uint8_t* buffer, uint8_t len, Message& pub)
     if (!IsValidChannel(raw_ch0) || !IsValidChannel(raw_ch1) ||
         !IsValidChannel(raw_ch2) || !IsValidChannel(raw_ch3))
     {
-        LOG_ERR("channel out of range");
+        DUST_LOG_ERR("channel out of range");
         return false;
     }
 

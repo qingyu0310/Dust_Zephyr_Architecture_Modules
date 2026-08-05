@@ -11,11 +11,10 @@
 
 #include "protocol_base.hpp"
 #include "remote.hpp"
-#include <zephyr/logging/log.h>
+#include "log.hpp"
 
 using namespace topic::remote_to;
 
-LOG_MODULE_REGISTER(vt12, LOG_LEVEL_INF);
 
 namespace vt12 {
 

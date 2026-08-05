@@ -7,10 +7,9 @@
  */
 
 #include "remote.hpp"
-#include <zephyr/logging/log.h>
+#include "log.hpp"
 #include <string.h>
 
-LOG_MODULE_REGISTER(remote, LOG_LEVEL_INF);
 
 extern const remote::RemoteEntry __remote_start[];
 extern const remote::RemoteEntry __remote_end[];
@@ -43,7 +42,7 @@ void Remote::Task()
             if (detect_.locked != nullptr && now - detect_.last_valid_ms >= kRemoteTimeoutMs)
             {
                 if (detect_.last_valid_ms != 0) {
-                    LOG_ERR("lost %s", detect_.locked->name);
+                    DUST_LOG_ERR("lost %s", detect_.locked->name);
                     detect_.last_valid_ms = 0;
                 }
                 pub_ = {};
@@ -111,14 +110,14 @@ void Remote::HandleDetecting()
         detect_.probe.hits++;
         if (detect_.probe.hits >= e->need_hits)
         {
-            LOG_INF("%s: hit %d/%d, lock", e->name, detect_.probe.hits, e->need_hits);
+            DUST_LOG_INF("%s: hit %d/%d, lock", e->name, detect_.probe.hits, e->need_hits);
             detect_.locked   = e;
             detect_.state    = DetectState::Locked;
             detect_.fail_count = 0;
         }
         else
         {
-            LOG_INF("%s: hit %d/%d", e->name, detect_.probe.hits, e->need_hits);
+            DUST_LOG_INF("%s: hit %d/%d", e->name, detect_.probe.hits, e->need_hits);
         }
         Consume(e->frame_size);
         return;
@@ -163,7 +162,7 @@ void Remote::HandleLocked()
         if (entry->protocol->Decode(frame_.frame_buf_, entry->frame_size, pub_))
         {
             if (detect_.last_valid_ms == 0) {
-                LOG_INF("reconnect %s", entry->name);
+                DUST_LOG_INF("reconnect %s", entry->name);
             }
             detect_.last_valid_ms = k_uptime_get_32();
             detect_.fail_count = 0;
@@ -185,7 +184,7 @@ void Remote::HandleLocked()
  */
 void Remote::SwitchProto(const RemoteEntry *e)
 {
-    LOG_INF("switch to %s", e->name);
+    DUST_LOG_INF("switch to %s", e->name);
     frame_.frame_pos_ = 0;                                  	// 丢弃旧数据
     uart_->Reconfigure(e->protocol->GetLineCfg());         // 原子：Stop→改波特率→Start
 }
@@ -211,7 +210,7 @@ void Remote::InitRange()
 void Remote::ResetDetect()
 {
     if (detect_.locked != nullptr) {
-        LOG_ERR("lost %s, redetect", detect_.locked->name);
+        DUST_LOG_ERR("lost %s, redetect", detect_.locked->name);
     }
     detect_.locked         = nullptr;
     detect_.state          = DetectState::Detecting;

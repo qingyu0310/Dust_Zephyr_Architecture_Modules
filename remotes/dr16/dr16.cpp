@@ -11,11 +11,10 @@
 
 #include "protocol_base.hpp"
 #include "remote.hpp"
-#include <zephyr/logging/log.h>
+#include "log.hpp"
 
 using namespace topic::remote_to;
 
-LOG_MODULE_REGISTER(dr16, LOG_LEVEL_INF);
 
 namespace dr16 {
 
@@ -101,7 +100,7 @@ bool Dr16Protocol::Decode(const uint8_t* buffer, uint8_t len, Message& pub)
 
     if (!IsValidChannel(ch0, ch1, ch2, ch3))
     {
-        LOG_ERR("channel out of range");
+        DUST_LOG_ERR("channel out of range");
         return false;
     }
 
@@ -110,7 +109,7 @@ bool Dr16Protocol::Decode(const uint8_t* buffer, uint8_t len, Message& pub)
 
     if (!IsValidSwitch(sw1, sw2))
     {
-        LOG_ERR("invalid switch");
+        DUST_LOG_ERR("invalid switch");
         return false;
     }
 

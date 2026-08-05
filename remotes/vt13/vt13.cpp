@@ -11,11 +11,10 @@
 
 #include "protocol_base.hpp"
 #include "remote.hpp"
-#include <zephyr/logging/log.h>
+#include "log.hpp"
 
 using namespace topic::remote_to;
 
-LOG_MODULE_REGISTER(vt13, LOG_LEVEL_INF);
 
 namespace vt13 {
 
@@ -121,13 +120,13 @@ bool Vt13Protocol::Decode(const uint8_t* buffer, uint8_t len, Message& pub)
 
     if (raw_data->start_of_frame_1 != kSOF1 || raw_data->start_of_frame_2 != kSOF2)
     {
-        LOG_ERR("invalid header");
+        DUST_LOG_ERR("invalid header");
         return false;
     }
 
     if (!IsValidChannel(raw_data))
     {
-        LOG_ERR("channel out of range");
+        DUST_LOG_ERR("channel out of range");
         return false;
     }
 

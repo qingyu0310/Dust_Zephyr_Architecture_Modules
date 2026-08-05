@@ -13,11 +13,10 @@
 #include <string.h>
 #include <zephyr/devicetree.h>
 #include <zephyr/kernel.h>
-#include <zephyr/logging/log.h>
+#include "log.hpp"
 
 #pragma message "Compiling Modules/Imu/Devices/ICM42688P"
 
-LOG_MODULE_REGISTER(icm42688p, LOG_LEVEL_INF);
 
 namespace icm42688p {
 
@@ -58,7 +57,7 @@ bool Icm42688p::Init()
     static const struct spi_dt_spec imu = SPI_DT_SPEC_GET(DT_ALIAS(imu_spi), kSpiOperation);
 
     if (!spi_.Init(imu)) {
-        LOG_ERR("SPI init failed");
+        DUST_LOG_ERR("SPI init failed");
         last_error_ = Error::DeviceNotReady;
         return false;
     }
@@ -67,31 +66,31 @@ bool Icm42688p::Init()
     k_busy_wait(3000);
 
     if (!SoftReset()) {
-        LOG_ERR("Soft reset failed");
+        DUST_LOG_ERR("Soft reset failed");
         last_error_ = Error::Config;
         return false;
     }
 
     if (!SelectSegment(reg::kSegSelGeneral)) {
-        LOG_ERR("Select general segment failed");
+        DUST_LOG_ERR("Select general segment failed");
         last_error_ = Error::Config;
         return false;
     }
 
     uint8_t chip_id = 0;
     if (!ReadReg(reg::kWhoAmI, chip_id)) {
-        LOG_ERR("Read WHO_AM_I failed");
+        DUST_LOG_ERR("Read WHO_AM_I failed");
         last_error_ = Error::ChipId;
         return false;
     }
     if (chip_id != reg::kWhoAmIValue) {
-        LOG_ERR("WHO_AM_I mismatch, got 0x%02X, expected 0x%02X", chip_id, reg::kWhoAmIValue);
+        DUST_LOG_ERR("WHO_AM_I mismatch, got 0x%02X, expected 0x%02X", chip_id, reg::kWhoAmIValue);
         last_error_ = Error::ChipId;
         return false;
     }
 
     if (!InitRegisters()) {
-        LOG_ERR("Init registers failed");
+        DUST_LOG_ERR("Init registers failed");
         last_error_ = Error::Config;
         return false;
     }
@@ -112,16 +111,16 @@ bool Icm42688p::LateInit()
 
     ImuOffsetData calib{};
     if (!EXEC_FLASH_READ(flash::kPartCalib.offset, &calib, sizeof(ImuOffsetData))) {
-        LOG_ERR("read calib from flash failed");
+        DUST_LOG_ERR("read calib from flash failed");
     }
     
     if (calib.gyro_offset[0] != 0.0f || calib.gyro_offset[1] != 0.0f || calib.gyro_offset[2] != 0.0f) {
         offset_ = calib;
         calibrated_ = true;
-        LOG_INF("load calib from flash");
+        DUST_LOG_INF("load calib from flash");
     }
     else {
-        LOG_INF("no calib data, use reg default");
+        DUST_LOG_INF("no calib data, use reg default");
     }
 
     return true;
