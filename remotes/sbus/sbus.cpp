@@ -159,11 +159,11 @@ void SbusProtocol::FillOutputData(const OutputData& od, Message& pub)
     switch (od.sw.sw1)
     {
         case SWITCH_UP:
-            pub.chassis_mode = ChassisMode::Spin;
-            break;
-        case SWITCH_MID:
-        default:
             pub.chassis_mode = ChassisMode::Normal;
+            break;
+        case SWITCH_DOWN:
+        default:
+			pub.chassis_mode = ChassisMode::Spin;
             break;
     }
 

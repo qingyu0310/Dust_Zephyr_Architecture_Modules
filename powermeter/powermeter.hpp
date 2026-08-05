@@ -52,8 +52,13 @@ public:
     float GetCurrent()   const { return current;    }
     float GetPower()     const { return power;      }
 
+    /** @brief 是否已收到过至少一帧功率计数据（开机首帧前为 false） */
+    bool HasFrame() const { return frame_count_ > 0; }
+
 private:
     uint16_t rx_id_  = 0x00;
+
+    int frame_count_ = 0;                  // 有效 CAN 帧计数（HasFrame 用）
 
     float shunt_volt = 0.0f;
     float bus_volt   = 0.0f;

@@ -34,6 +34,7 @@ void Remote::Task()
                 if (n == 0) break;
 
                 ProcessChunk(tmp, n);
+				zbus_chan_pub(&pub_remote_to, &pub_, K_MSEC(1));
             }
         }
         else
@@ -185,11 +186,8 @@ void Remote::HandleLocked()
 void Remote::SwitchProto(const RemoteEntry *e)
 {
     LOG_INF("switch to %s", e->name);
-    uart_->StopRx();
-    frame_.frame_pos_ = 0;                                  // 丢弃旧数据
-    k_busy_wait(1000);                        // 等待 FIFO 排空
-    uart_->SetLineConfig(e->protocol->GetLineCfg());
-    uart_->StartRx();
+    frame_.frame_pos_ = 0;                                  	// 丢弃旧数据
+    uart_->Reconfigure(e->protocol->GetLineCfg());         // 原子：Stop→改波特率→Start
 }
 
 /**
