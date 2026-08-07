@@ -52,8 +52,8 @@ bool ImuManager::Init(ImuStartMode mode)
         return false;
     }
 
-    DUST_LOG_INF("start preheat");
-    Preheat();
+    // DUST_LOG_INF("start preheat");
+    // Preheat();
 
     if (mode == ImuStartMode::AutoCalib)
     {
@@ -112,7 +112,7 @@ void ImuManager::Task()
         }
 
         log_timer_.Clock([&]()  {
-            printk("%f,%f,%f\n", (double)pub_.roll, (double)pub_.pitch, (double)pub_.yaw);
+            // printk("%f,%f,%f\n", (double)pub_.roll, (double)pub_.pitch, (double)pub_.yaw);
             // printk("%f, %f\n", (double)sample_.temp, (double)heater_.GetDuty());
         });
         

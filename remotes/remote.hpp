@@ -71,7 +71,7 @@ public:
     bool Start(ThreadPrio prio = ThreadPrio::Normal)
     {
         if (!ready_) return false;
-        thread_.Start(TaskEntry, prio, this);
+        thread_.Start(TaskEntry, prio, this, "remote");
         return true;
     }
 
@@ -110,7 +110,7 @@ private:
     topic::remote_to::Message pub_ {};
     UartDma            *uart_   = nullptr;             // UART 数据流
     bool                ready_  = false;
-    Thread<1024 * 5>    thread_ {};                    // 遥控器解析线程
+    Thread<2048>        thread_ {};                    // 遥控器解析线程
 
     void SwitchProto(const RemoteEntry *e);
     void InitRange();

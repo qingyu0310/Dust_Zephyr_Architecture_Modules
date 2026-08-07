@@ -40,7 +40,7 @@ public:
         if (!ready_) {
             return false;
         }
-        thread_.Start(TaskEntry, prio, this);
+        thread_.Start(TaskEntry, prio, this, "imu");
         return true;
     }
 
@@ -55,7 +55,7 @@ private:
     Timer                   log_timer_  {10};
     topic::imu_to::Message  pub_        {};
     
-    Thread<4096>            thread_     {};
+    Thread<2048>            thread_     {};
     bool                    ready_      = false;
 
     bool InitSource();
