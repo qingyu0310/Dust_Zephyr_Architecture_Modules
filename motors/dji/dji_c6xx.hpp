@@ -2,8 +2,8 @@
  * @file dji_c6xx.hpp
  * @author qingyu
  * @brief DJI C610 / C620 电机驱动 —— CAN 数据解析与状态回馈
- * @version 0.1
- * @date 2026-04-28
+ * @version 0.2
+ * @date 2026-09-27
  *
  * @copyright Copyright (c) 2026
  *
@@ -44,18 +44,19 @@ public:
 
     Snapshot ReadAll() const
     {
-        atomic_t seq;
         Snapshot snap;
-        do {
+        atomic_t seq;
+        for (;;) {
             seq = atomic_get(&seq_);
-            if (seq & 1) continue;
+            if (seq & 1) continue;                  // 写中 → 重读
             snap.radian      = now_rad_;
             snap.angle       = now_angle_;
             snap.omega       = now_omega_;
             snap.current     = now_current_;
             snap.torque      = now_torque_;
             snap.velocity    = now_velocity_;
-        } while (atomic_get(&seq_) != seq);
+            if (atomic_get(&seq_) == seq) break;    // 读期间没被写 → 快照有效
+        }
         return snap;
     }
 
@@ -117,11 +118,11 @@ public:
 
     Snapshot ReadAll() const
     {
-        atomic_t seq;
         Snapshot snap;
-        do {
+        atomic_t seq;
+        for (;;) {
             seq = atomic_get(&seq_);
-            if (seq & 1) continue;
+            if (seq & 1) continue;                  // 写中 → 重读
             snap.radian      = now_rad_;
             snap.angle       = now_angle_;
             snap.omega       = now_omega_;
@@ -129,7 +130,8 @@ public:
             snap.torque      = now_torque_;
             snap.velocity    = now_velocity_;
             snap.temperature = now_temp_;
-        } while (atomic_get(&seq_) != seq);
+            if (atomic_get(&seq_) == seq) break;    // 读期间没被写 → 快照有效
+        }
         return snap;
     }
     float GetCurrentMax()     const { return kCurrentMax;   }

@@ -2,8 +2,8 @@
  * @file dm.hpp
  * @author qingyu
  * @brief 
- * @version 0.1
- * @date 2026-05-14
+ * @version 0.2
+ * @date 2026-09-27
  * 
  * @copyright Copyright (c) 2026
  * 
@@ -103,11 +103,11 @@ public:
      */
     Snapshot ReadAll() const
     {
-        atomic_t seq;
         Snapshot snap;
-        do {
+        atomic_t seq;
+        for (;;) {
             seq = atomic_get(&seq_);
-            if (seq & 1) continue;
+            if (seq & 1) continue;                  // 写中 → 重读
             snap.radian   = now_rad_;
             snap.angle    = now_ang_;
             snap.velocity = now_vel_;
@@ -116,7 +116,8 @@ public:
             snap.tmos     = now_tmos_;
             snap.tcoil    = now_tcoil_;
             snap.err      = now_err_;
-        } while (atomic_get(&seq_) != seq);
+            if (atomic_get(&seq_) == seq) break;    // 读期间没被写 → 快照有效
+        }
         return snap;
     }
 

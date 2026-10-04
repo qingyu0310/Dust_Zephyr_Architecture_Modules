@@ -2,8 +2,8 @@
  * @file powermeter.hpp
  * @author qingyu
  * @brief HPM5361 功率计 CAN 解析 — seqlock 保护 ISR/线程数据一致性
- * @version 0.2
- * @date 2026-05-10
+ * @version 0.3
+ * @date 2026-09-27
  *
  * @copyright Copyright (c) 2026
  *
@@ -34,16 +34,17 @@ public:
     /** @brief 批量读——seqlock 保护，一次拿到所有值的一致快照 */
     Snapshot ReadAll() const
     {
-        atomic_t seq;
         Snapshot snap;
-        do {
+        atomic_t seq;
+        for (;;) {
             seq = atomic_get(&seq_);
-            if (seq & 1) continue;
+            if (seq & 1) continue;                  // 写中 → 重读
             snap.shunt_volt = shunt_volt;
             snap.bus_volt   = bus_volt;
             snap.current    = current;
             snap.power      = power;
-        } while (atomic_get(&seq_) != seq);
+            if (atomic_get(&seq_) == seq) break;    // 读期间没被写 → 快照有效
+        }
         return snap;
     }
 
