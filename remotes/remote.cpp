@@ -2,8 +2,8 @@
  * @file remote.cpp
  * @author qingyu
  * @brief 遥控器接收机 — 线程内协议解析
- * @version 0.3
- * @date 2026-05-13
+ * @version 0.4
+ * @date 2026-10-19
  */
 
 #include "remote.hpp"
@@ -17,39 +17,64 @@ extern const remote::RemoteEntry __remote_end[];
 namespace remote {
 
 /**
- * @brief 遥控器线程主循环 — 接收 UART 数据并送入解析器。
- *        锁定超时后发布归零数据并回到探测状态。
+ * @brief 遥控器任务 — 单拍：收一次 UART 数据并送入解析器
+ *
+ * 循环、停止检查由 Thread 外壳负责；节拍由这里的 k_sem_take 决定：
+ * 数据到达立即返回，无数据时最多等 kPollWait。
+ *
+ * @param context Remote 实例
+ * @return Continue=正常；Retry=锁定后超时未收到有效帧（交给恢复钩子）
  */
-void Remote::Task()
+TaskResult Remote::Task(void* context)
 {
-    for (;;)
-    {
-        if (k_sem_take(&uart_->sem_, K_MSEC(50)) == 0)
-        {
-            uint8_t tmp[32];
-            while (true)
-            {
-                uint16_t n = uart_->Read(tmp, sizeof(tmp));
-                if (n == 0) break;
+    auto* self = static_cast<Remote*>(context);
 
-                ProcessChunk(tmp, n);
-				zbus_chan_pub(&pub_remote_to, &pub_, K_MSEC(1));
-            }
-        }
-        else
+    if (k_sem_take(&self->uart_->sem_, kPollWait) == 0)
+    {
+        uint8_t tmp[32];
+        while (true)
         {
-            uint32_t now = k_uptime_get_32();
-            if (detect_.locked != nullptr && now - detect_.last_valid_ms >= kRemoteTimeoutMs)
-            {
-                if (detect_.last_valid_ms != 0) {
-                    DUST_LOG_ERR("lost %s", detect_.locked->name);
-                    detect_.last_valid_ms = 0;
-                }
-                pub_ = {};
-                zbus_chan_pub(&pub_remote_to, &pub_, K_MSEC(1));
-            }
+            uint16_t n = self->uart_->Read(tmp, sizeof(tmp));
+            if (n == 0) break;
+
+            self->ProcessChunk(tmp, n);
+            zbus_chan_pub(&pub_remote_to, &self->pub_, K_MSEC(1));
         }
+
+        return TaskResult::Continue;
     }
+
+    // 本轮无数据：锁定状态下超过超时时间未收到有效帧 → 交给恢复钩子
+    const uint32_t now = k_uptime_get_32();
+    if (self->detect_.locked != nullptr && now - self->detect_.last_valid_ms >= kRemoteTimeoutMs)
+    {
+        return TaskResult::Retry;
+    }
+
+    return TaskResult::Continue;
+}
+
+/**
+ * @brief 恢复钩子：遥控器失联后把发布数据清零并重进任务
+ *
+ * 只清一次（last_valid_ms 置 0 作为标记），后续超时周期不再重复打日志与发布。
+ *
+ * @param context Remote 实例
+ * @return true=重进任务
+ */
+bool Remote::Recover(void* context)
+{
+    auto* self = static_cast<Remote*>(context);
+
+    if (self->detect_.last_valid_ms != 0) {
+        DUST_LOG_ERR("lost %s", self->detect_.locked->name);
+        self->detect_.last_valid_ms = 0;
+    }
+
+    self->pub_ = {};
+    zbus_chan_pub(&pub_remote_to, &self->pub_, K_MSEC(1));
+
+    return true;
 }
 
 /**

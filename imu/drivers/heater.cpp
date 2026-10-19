@@ -351,8 +351,7 @@ bool Heater::Preheat(float temperature, float dt_s)
 
     Update(temperature);
     const bool near_target = std::abs(temperature - kTargetTemp) <= kTargetTol;
-    const bool stable_ok = stable->Check(temperature, dt_s, kSlopeLimit, 
-							kNoiseLimit, kDriftLimit) && near_target;
+    const bool stable_ok   = stable->Check(temperature, dt_s, kSlopeLimit, kNoiseLimit, kDriftLimit) && near_target;
 
     if (stable_ok) {
         DUST_LOG_INF("preheat stable");

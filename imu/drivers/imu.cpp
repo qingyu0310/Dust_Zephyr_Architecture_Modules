@@ -2,8 +2,8 @@
  * @file imu.cpp
  * @author qingyu
  * @brief IMU 数据源管理、加热控制与姿态发布
- * @version 0.1
- * @date 2026-06-01
+ * @version 0.2
+ * @date 2026-10-19
  */
 
 #include "imu.hpp"
@@ -75,49 +75,52 @@ bool ImuManager::Init(ImuStartMode mode)
 }
 
 /**
- * @brief 任务函数
+ * @brief 任务函数 — 单拍：读一帧 → 控温 → 姿态解算
  *
+ * 循环、停止检查与 1ms 节拍由 Thread 外壳负责。
+ *
+ * @param context ImuManager 实例
+ * @return Continue=正常；Retry=读取失败
  */
-void ImuManager::Task()
+TaskResult ImuManager::Task(void* context)
 {
+    auto* self = static_cast<ImuManager*>(context);
+
     const auto kMeasureDT = [&]() -> float
     {
         static uint32_t last_cycle = 0;
         const uint32_t now_cycle = k_cycle_get_32();
         if (last_cycle == 0) {
             last_cycle = now_cycle;
-            return sample_.dt;
+            return self->sample_.dt;
         }
         const uint64_t delta_ns = k_cyc_to_ns_floor64(now_cycle - last_cycle);
         last_cycle = now_cycle;
-        return (delta_ns == 0) ? sample_.dt : static_cast<float>(delta_ns) * 1.0e-9f;
+        return (delta_ns == 0) ? self->sample_.dt : static_cast<float>(delta_ns) * 1.0e-9f;
     };
 
-    log_timer_.SetPeriod(1);
+    self->log_timer_.SetPeriod(1);
+    self->log_timer_.Update();
 
-    for (;;)
-    {
-        log_timer_.Update();
-
-        if (source_ != nullptr && source_->Read(sample_))
-        {
-            // 用真实经过时间修正当前样本积分周期，避免调度抖动直接传进 EKF。
-            sample_.dt = kMeasureDT();
-
-            heater_.Update(sample_.temp);
-
-            attitude_.Process(sample_, pub_);
-            
-            // zbus_chan_pub(&pub_imu_to, &pub_, K_MSEC(1));
-        }
-
-        log_timer_.Clock([&]()  {
-            // printk("%f,%f,%f\n", (double)pub_.roll, (double)pub_.pitch, (double)pub_.yaw);
-            // printk("%f, %f\n", (double)sample_.temp, (double)heater_.GetDuty());
-        });
-        
-        k_msleep(1);
+    if (self->source_ == nullptr || !self->source_->Read(self->sample_)) {
+        return TaskResult::Retry;
     }
+
+    // 用真实经过时间修正当前样本积分周期，避免调度抖动直接传进 EKF。
+    self->sample_.dt = kMeasureDT();
+
+    self->heater_.Update(self->sample_.temp);
+
+    self->attitude_.Process(self->sample_, self->pub_);
+
+    // zbus_chan_pub(&pub_imu_to, &self->pub_, K_MSEC(1));
+
+    self->log_timer_.Clock([&]()  {
+        // printk("%f,%f,%f\n", (double)self->pub_.roll, (double)self->pub_.pitch, (double)self->pub_.yaw);
+        // printk("%f, %f\n", (double)self->sample_.temp, (double)self->heater_.GetDuty());
+    });
+
+    return TaskResult::Continue;
 }
 
 /**

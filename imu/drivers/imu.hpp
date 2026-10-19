@@ -2,8 +2,8 @@
  * @file imu.hpp
  * @author qingyu
  * @brief IMU 模块公共接口与采样数据结构
- * @version 0.1
- * @date 2026-06-02
+ * @version 0.2
+ * @date 2026-10-19
  */
 
 #pragma once
@@ -33,18 +33,26 @@ enum class ImuStartMode : uint8_t
 class ImuManager final
 {
 public:
+    static constexpr k_timeout_t kPeriod = K_MSEC(1);   // 采集节拍
+
     bool Init(ImuStartMode mode = ImuStartMode::Normal);
-    
+
     bool Start(ThreadPrio prio = ThreadPrio::Normal)
     {
         if (!ready_) {
             return false;
         }
-        thread_.Start(TaskEntry, prio, this, "imu");
+        thread_.Start(TaskEntry, kPeriod, prio, this, "imu");
         return true;
     }
 
     bool ReadSample(Sample& sample) { return source_->Read(sample); }
+
+    /**
+     * @brief 暂停 / 恢复采集线程
+     */
+    void Pause()  { thread_.Pause(); }
+    void Resume() { thread_.Resume(); }
 
 private:
     Source                  *source_    = nullptr;
@@ -61,14 +69,11 @@ private:
     bool InitSource();
     bool Preheat();
 
-    void Task();
+    TaskResult Task(void* context);
 
-    static void TaskEntry(void *p1, void *p2, void *p3)
+    static TaskResult TaskEntry(void* context)
     {
-        ARG_UNUSED(p2);
-        ARG_UNUSED(p3);
-        auto *self = static_cast<ImuManager*>(p1);
-        self->Task();
+        return static_cast<ImuManager*>(context)->Task(context);
     }
 };
 

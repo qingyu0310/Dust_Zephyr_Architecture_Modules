@@ -2,8 +2,8 @@
  * @file remote.hpp
  * @author qingyu
  * @brief 遥控器接收机 — 线程内协议解析
- * @version 0.3
- * @date 2026-05-13
+ * @version 0.4
+ * @date 2026-10-19
  */
 
 #pragma once
@@ -58,6 +58,8 @@ struct RemoteEntry {
 class Remote final
 {
 public:
+    static constexpr k_timeout_t kPollWait = K_MSEC(50);   // 单拍等数据上限（数据到达立即返回）
+
     bool Init(UartDma &uart)
     {
         uart_ = &uart;
@@ -71,9 +73,16 @@ public:
     bool Start(ThreadPrio prio = ThreadPrio::Normal)
     {
         if (!ready_) return false;
-        thread_.Start(TaskEntry, prio, this, "remote");
+        thread_.SetRecoveryHook(Recover);
+        thread_.Start(TaskEntry, K_NO_WAIT, prio, this, "remote");   // 节拍由 Task 内的 k_sem_take 决定
         return true;
     }
+
+    /**
+     * @brief 暂停 / 恢复解析线程
+     */
+    void Pause()  { thread_.Pause(); }
+    void Resume() { thread_.Resume(); }
 
 private:
     static constexpr uint16_t kFrameBufSize     = 64;                   // 帧缓冲区大小
@@ -121,14 +130,18 @@ private:
     void Dispatch();
     void ProcessChunk(const uint8_t *data, uint16_t len);
     
-    void Task();
+    TaskResult Task(void* context);
 
-    static void TaskEntry(void *p1, void *p2, void *p3)
+    /**
+     * @brief 恢复钩子：串口超时未收到有效帧时清零发布数据
+     * @param context Remote 实例
+     * @return true=重进任务
+     */
+    static bool Recover(void* context);
+
+    static TaskResult TaskEntry(void* context)
     {
-        ARG_UNUSED(p2);
-        ARG_UNUSED(p3);
-        auto self = static_cast<Remote*>(p1);
-        self->Task();
+        return static_cast<Remote*>(context)->Task(context);
     }
 };
 
