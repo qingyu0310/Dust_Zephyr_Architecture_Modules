@@ -10,7 +10,6 @@
 #include "log.hpp"
 #include <string.h>
 
-
 extern const remote::RemoteEntry __remote_start[];
 extern const remote::RemoteEntry __remote_end[];
 
