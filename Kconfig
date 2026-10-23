@@ -28,14 +28,6 @@ config DUST_MOD_DEV_IMU_ICM42688P
     help
         ICM42688P source implementation for the IMU module.
 
-config DUST_MOD_DEV_IMU_IDENT
-    bool "IMU open-loop identification"
-    default n
-    select DUST_ID_STABILITY
-    select DUST_COM_UART_DMA
-    help
-        IMU heater duty-step open-loop identification.
-
 config DUST_MOD_DEV_MOTOR_DJI
     bool "DJI motor"
     default n

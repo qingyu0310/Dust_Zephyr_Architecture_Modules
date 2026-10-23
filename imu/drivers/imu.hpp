@@ -2,8 +2,8 @@
  * @file imu.hpp
  * @author qingyu
  * @brief IMU 模块公共接口与采样数据结构
- * @version 0.2
- * @date 2026-10-19
+ * @version 0.3
+ * @date 2026-10-23
  */
 
 #pragma once
@@ -42,6 +42,10 @@ public:
         if (!ready_) {
             return false;
         }
+        thread_.SetFaultPolicy(ThreadFaultPolicy::Recover);   // 姿态链路：故障时全杀
+        thread_.SetRetryHook(OnRetry);
+        thread_.SetExitHook(OnExit);
+
         thread_.Start(TaskEntry, kPeriod, prio, this, "imu");
         return true;
     }
@@ -60,14 +64,17 @@ private:
     attitude::Processor     attitude_   {};
     heater::Heater          heater_     {};
 
-    Timer                   log_timer_  {10};
     topic::imu_to::Message  pub_        {};
-    
+    uint32_t                fail_count_ = 0;                        // 连续读失败次数（日志节流用）
+
     Thread<2048>            thread_     {};
     bool                    ready_      = false;
 
     bool InitSource();
     bool Preheat();
+
+    static bool OnRetry(void* context);
+    static void OnExit(void* context);
 
     TaskResult Task(void* context);
 
@@ -89,7 +96,7 @@ private:
  */
 #define REGISTER_IMU(ImuType, name_)                                                \
     static ImuType kImuSource_##name_;                                              \
-    static const imu::ImuEntry kImuEntry_##name_                                         \
+    static const imu::ImuEntry kImuEntry_##name_                                    \
     __attribute__((used, __section__(".imu"))) = { #name_, &kImuSource_##name_ }
 
 } // namespace imu

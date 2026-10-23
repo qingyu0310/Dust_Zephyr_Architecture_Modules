@@ -2,8 +2,8 @@
  * @file remote.cpp
  * @author qingyu
  * @brief 遥控器接收机 — 线程内协议解析
- * @version 0.4
- * @date 2026-10-19
+ * @version 0.6
+ * @date 2026-10-23
  */
 
 #include "remote.hpp"
@@ -54,14 +54,14 @@ TaskResult Remote::Task(void* context)
 }
 
 /**
- * @brief 恢复钩子：遥控器失联后把发布数据清零并重进任务
+ * @brief Retry 钩子：遥控器失联后把发布数据清零并重进任务
  *
  * 只清一次（last_valid_ms 置 0 作为标记），后续超时周期不再重复打日志与发布。
  *
  * @param context Remote 实例
  * @return true=重进任务
  */
-bool Remote::Recover(void* context)
+bool Remote::OnRetry(void* context)
 {
     auto* self = static_cast<Remote*>(context);
 
@@ -74,6 +74,22 @@ bool Remote::Recover(void* context)
     zbus_chan_pub(&pub_remote_to, &self->pub_, K_MSEC(1));
 
     return true;
+}
+
+/**
+ * @brief 亡语：线程被处决前清零发布数据
+ *
+ * 遥控线程自己不会主动退出，本钩子只在被 Halt 或 thread exit 杀掉时执行，
+ * 避免下游继续拿到失联前的最后一帧。
+ *
+ * @param context Remote 实例
+ */
+void Remote::OnExit(void* context)
+{
+    auto* self = static_cast<Remote*>(context);
+
+    self->pub_ = {};
+    zbus_chan_pub(&pub_remote_to, &self->pub_, K_MSEC(1));
 }
 
 /**

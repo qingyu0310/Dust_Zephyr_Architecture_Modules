@@ -2,8 +2,8 @@
  * @file imu.cpp
  * @author qingyu
  * @brief IMU 数据源管理、加热控制与姿态发布
- * @version 0.2
- * @date 2026-10-19
+ * @version 0.3
+ * @date 2026-10-23
  */
 
 #include "imu.hpp"
@@ -99,12 +99,11 @@ TaskResult ImuManager::Task(void* context)
         return (delta_ns == 0) ? self->sample_.dt : static_cast<float>(delta_ns) * 1.0e-9f;
     };
 
-    self->log_timer_.SetPeriod(1);
-    self->log_timer_.Update();
-
     if (self->source_ == nullptr || !self->source_->Read(self->sample_)) {
         return TaskResult::Retry;
     }
+
+    self->fail_count_ = 0;      // 连续失败计数：本拍读成功即清零
 
     // 用真实经过时间修正当前样本积分周期，避免调度抖动直接传进 EKF。
     self->sample_.dt = kMeasureDT();
@@ -113,14 +112,47 @@ TaskResult ImuManager::Task(void* context)
 
     self->attitude_.Process(self->sample_, self->pub_);
 
-    // zbus_chan_pub(&pub_imu_to, &self->pub_, K_MSEC(1));
-
-    self->log_timer_.Clock([&]()  {
-        // printk("%f,%f,%f\n", (double)self->pub_.roll, (double)self->pub_.pitch, (double)self->pub_.yaw);
-        // printk("%f, %f\n", (double)self->sample_.temp, (double)self->heater_.GetDuty());
-    });
+    zbus_chan_pub(&pub_imu_to, &self->pub_, K_MSEC(1));
 
     return TaskResult::Continue;
+}
+
+/**
+ * @brief Retry 钩子：读失败后清零发布数据，按节流打日志
+ *
+ * 读失败是姿态链路的常态（偶发总线抖动），必须恒返回 true，
+ * 不能让默认处置把整机杀掉。日志每 100 次一条，避免 1kHz 采样下刷屏。
+ *
+ * @param context ImuManager 实例
+ * @return true=重进任务
+ */
+bool ImuManager::OnRetry(void* context)
+{
+    auto* self = static_cast<ImuManager*>(context);
+
+    self->fail_count_++;
+    self->pub_ = {};
+
+    if (self->fail_count_ % 100 == 1) {
+        DUST_LOG_ERR("imu read fail x%u", (unsigned)self->fail_count_);
+    }
+
+    return true;
+}
+
+/**
+ * @brief 亡语：线程被处决前关掉加热 PWM 并清零发布数据
+ *
+ * 姿态线程自己不会主动退出，本钩子只在被 Halt 或 thread exit 杀掉时执行。
+ *
+ * @param context ImuManager 实例
+ */
+void ImuManager::OnExit(void* context)
+{
+    auto* self = static_cast<ImuManager*>(context);
+
+    self->heater_.Off();
+    self->pub_ = {};
 }
 
 /**

@@ -2,8 +2,8 @@
  * @file remote.hpp
  * @author qingyu
  * @brief 遥控器接收机 — 线程内协议解析
- * @version 0.4
- * @date 2026-10-19
+ * @version 0.6
+ * @date 2026-10-23
  */
 
 #pragma once
@@ -73,7 +73,10 @@ public:
     bool Start(ThreadPrio prio = ThreadPrio::Normal)
     {
         if (!ready_) return false;
-        thread_.SetRecoveryHook(Recover);
+
+        thread_.SetRetryHook(OnRetry);
+        thread_.SetExitHook(OnExit);
+
         thread_.Start(TaskEntry, K_NO_WAIT, prio, this, "remote");   // 节拍由 Task 内的 k_sem_take 决定
         return true;
     }
@@ -129,15 +132,11 @@ private:
     void HandleDetecting();
     void Dispatch();
     void ProcessChunk(const uint8_t *data, uint16_t len);
-    
-    TaskResult Task(void* context);
 
-    /**
-     * @brief 恢复钩子：串口超时未收到有效帧时清零发布数据
-     * @param context Remote 实例
-     * @return true=重进任务
-     */
-    static bool Recover(void* context);
+    static bool OnRetry(void* context);     // Retry 钩子：失联清零发布数据
+    static void OnExit(void* context);      // 亡语：清零发布数据（被处决时）
+
+    TaskResult Task(void* context);
 
     static TaskResult TaskEntry(void* context)
     {
