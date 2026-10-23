@@ -162,8 +162,7 @@ bool Icm42688p::ReadRaw(ImuRawSample& raw)
 bool Icm42688p::SoftReset()
 {
     current_segment_ = reg::kSegSelGeneral;
-    if (!WriteReg(reg::kSegSel, reg::kSegSelGeneral) ||
-        !WriteReg(reg::kSoftRstReg, 0x01)) {
+    if (!WriteReg(reg::kSegSel, reg::kSegSelGeneral) || !WriteReg(reg::kSoftRstReg, 0x01)) {
         return false;
     }
 
@@ -195,9 +194,7 @@ bool Icm42688p::InitRegisters()
     k_busy_wait(50000);
 
     // GYR_NOISE_PERF 配置序列：先关电源 → 写 GYR_CONF → 重新上电
-    if (!WriteReg(reg::kPwrCtrl, reg::kPwrOff) ||
-        !WriteChecked(reg::kGyrConf, reg::kGyrConfNoiseOpt) ||
-        !WriteReg(reg::kPwrCtrl, reg::kPwrOnAll)) {
+    if (!WriteReg(reg::kPwrCtrl, reg::kPwrOff) || !WriteChecked(reg::kGyrConf, reg::kGyrConfNoiseOpt) || !WriteReg(reg::kPwrCtrl, reg::kPwrOnAll)) {
         return false;
     }
     k_busy_wait(50000);
