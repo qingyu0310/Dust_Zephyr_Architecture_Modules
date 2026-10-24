@@ -42,11 +42,8 @@ public:
         if (!ready_) {
             return false;
         }
-        thread_.SetFaultPolicy(ThreadFaultPolicy::Recover);   // 姿态链路：故障时全杀
-        thread_.SetRetryHook(OnRetry);
-        thread_.SetExitHook(OnExit);
-
-        thread_.Start(TaskEntry, kPeriod, prio, this, "imu");
+        // 姿态链路：读失败由 OnRetry 节流兜住，救命失败则全杀
+        thread_.Start(TaskEntry, kPeriod, prio, this, "imu", { OnRetry, OnExit, ThreadFaultPolicy::Recover });
         return true;
     }
 
@@ -73,8 +70,8 @@ private:
     bool InitSource();
     bool Preheat();
 
-    static bool OnRetry(void* context);
-    static void OnExit(void* context);
+    static bool OnRetry(void* context);     // Retry 钩子：读失败节流 + 清零发布数据
+    static void OnExit(void* context);      // 亡语：关加热 PWM + 清零发布数据（被处决时）
 
     TaskResult Task(void* context);
 

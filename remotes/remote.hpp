@@ -2,8 +2,8 @@
  * @file remote.hpp
  * @author qingyu
  * @brief 遥控器接收机 — 线程内协议解析
- * @version 0.6
- * @date 2026-10-23
+ * @version 0.7
+ * @date 2026-10-24
  */
 
 #pragma once
@@ -74,10 +74,9 @@ public:
     {
         if (!ready_) return false;
 
-        thread_.SetRetryHook(OnRetry);
-        thread_.SetExitHook(OnExit);
-
-        thread_.Start(TaskEntry, K_NO_WAIT, prio, this, "remote");   // 节拍由 Task 内的 k_sem_take 决定
+        // 遥控链路：失联由 OnRetry 清零兜住，救命失败则全杀
+        // 节拍由 Task 内的 k_sem_take 决定
+        thread_.Start(TaskEntry, K_NO_WAIT, prio, this, "remote", {OnRetry, OnExit, ThreadFaultPolicy::Recover});
         return true;
     }
 
@@ -144,6 +143,17 @@ private:
     }
 };
 
+/**
+ * @brief 注册遥控器协议到 .remote 链接段
+ *
+ * 每个协议源文件在自己的 .cpp 里写一行，Remote 按优先级与命中数自动锁定。
+ *
+ * @param RemoteType 协议类名（需继承 RemoteProtocol）
+ * @param frame_size_ 帧长度
+ * @param priority_ 优先级（High/Medium/Low）
+ * @param lock_score_ 锁定所需连续命中次数
+ * @param name_ 协议名，同时作为变量名后缀和运行时标识
+ */
 #define REGISTER_REMOTE(RemoteType, frame_size_, priority_, lock_score_, name_)     \
     static RemoteType kRemoteProtocol_##name_;                                      \
     static const remote::RemoteEntry kRemoteEntry_##name_                           \
