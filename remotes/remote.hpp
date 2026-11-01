@@ -106,9 +106,10 @@ private:
     struct {
         DetectState         state           = DetectState::Detecting;
         uint8_t             fail_count      = 0;
-        uint16_t            last_valid_ms   = 0;
+        uint32_t            last_valid_ms   = 0;
         uint8_t             min_frame_size  = 0;
         uint8_t             max_frame_size  = 0;
+        bool                lost            = false;
         const RemoteEntry  *locked          = nullptr;
         Probe               probe           {};
     } detect_ {};

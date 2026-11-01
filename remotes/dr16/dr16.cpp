@@ -11,10 +11,10 @@
 
 #include "protocol_base.hpp"
 #include "remote.hpp"
+#include "dr16.hpp"
 #include "log.hpp"
 
 using namespace topic::remote_to;
-
 
 namespace dr16 {
 
@@ -36,29 +36,12 @@ public:
     bool Decode(const uint8_t *buffer, uint8_t len, topic::remote_to::Message &pub) override;
 
 private:
-    enum SwitchStatus {
-        SWITCH_UP   = 1,
-        SWITCH_MID  = 3,
-        SWITCH_DOWN = 2
-    };
-
-    struct Switch {
-        uint8_t sw1;
-        uint8_t sw2;
-    };
-    struct OutputData {
-        topic::remote_to::Channel  ch;
-        Switch                     sw;
-        Mouse    mouse;
-        Keyboard keyboard;
-    };
-
     static constexpr uint16_t kMinChannel = 364;
     static constexpr uint16_t kMaxChannel = 1684;
 
     static bool IsValidChannel(uint16_t ch0, uint16_t ch1, uint16_t ch2, uint16_t ch3);
     static bool IsValidSwitch(uint8_t sw1, uint8_t sw2);
-    static void FillOutputData(const OutputData &od, topic::remote_to::Message &pub);
+    static void DefaultFillOutputData(const OutputData &od, topic::remote_to::Message &pub);
 };
 
 /**
@@ -113,8 +96,6 @@ bool Dr16Protocol::Decode(const uint8_t* buffer, uint8_t len, Message& pub)
         return false;
     }
 
-    static KeyboardState keyboard_state_{};
-
     OutputData od{};
 
     od.sw.sw1 = sw1;
@@ -132,23 +113,74 @@ bool Dr16Protocol::Decode(const uint8_t* buffer, uint8_t len, Message& pub)
     od.ch.yaw      = normChannelInv(ch2, kCenter, kInvChannelSpan);
     od.ch.pitch    = normChannelInv(ch3, kCenter, kInvChannelSpan);
 
-    constexpr float kMouseScaleX = 30.0f;
-    constexpr float kMouseScaleY = 2.0f;
-    constexpr float kMouseScaleZ = 1.0f;
-
-    od.mouse.x     = normMouse(static_cast<float>(dx), kMouseScaleX);
-    od.mouse.y     = normMouse(static_cast<float>(dy), kMouseScaleY);
-    od.mouse.z     = normMouse(static_cast<float>(dz), kMouseScaleZ);
+    od.mouse.x     = normMouse(static_cast<float>(dx));
+    od.mouse.y     = normMouse(static_cast<float>(dy));
+    od.mouse.z     = normMouse(static_cast<float>(dz));
 
     od.mouse.left  = buffer[12] != 0;
     od.mouse.right = buffer[13] != 0;
 
-    Keyboard cur_raw { .all = buffer[14] };
-    keyboard_state_.Process(od.keyboard, cur_raw);
+    od.keyboard.all = buffer[14];    // 原始按键位，长按/切换由映射层处理
 
+    DefaultFillOutputData(od, pub);
     FillOutputData(od, pub);
+    ValidateOutput(pub);
 
     return true;
+}
+
+/**
+ * @brief 默认映射：协议输出 → 业务语义消息
+ * @param od   协议解析后的内部数据
+ * @param pub  输出消息
+ */
+void Dr16Protocol::DefaultFillOutputData(const OutputData& od, Message& pub)
+{
+    constexpr float kMouseSensitivityX = 30.0f;
+    constexpr float kMouseSensitivityY = 2.0f;
+    constexpr uint16_t kKeyboardMode = 0;    // 全键长按；改位掩码即可让指定键走切换
+
+    static KeyboardState keyboard_state_ { kKeyboardMode };
+
+    Keyboard kb {};
+
+    keyboard_state_.Process(kb, od.keyboard);
+
+    pub.chassisy = kb.w ? 1.0f : kb.s ? -1.0f : od.ch.chassisy;
+    pub.chassisx = kb.a ? 1.0f : kb.d ? -1.0f : od.ch.chassisx;
+    pub.pitch    = ClampAxis(od.mouse.y * kMouseSensitivityY + od.ch.pitch);
+    pub.yaw      = ClampAxis(od.mouse.x * kMouseSensitivityX + od.ch.yaw);
+
+    switch (od.sw.sw1)
+    {
+        case SWITCH_UP:
+            pub.shoot_ctrl = StartMode::On;
+            break;
+        default:
+            pub.shoot_ctrl = StartMode::Off;
+            break;
+    }
+
+    switch (od.sw.sw2)
+    {
+        case SWITCH_UP:
+            pub.reload_ctrl = StartMode::On;
+            break;
+        default:
+            pub.reload_ctrl = StartMode::Off;
+            break;
+    }
+}
+
+/**
+ * @brief 后处理入口（__weak），用户区按需覆盖
+ * @param od   协议解析后的内部数据
+ * @param pub  已被默认映射填好的业务消息
+ */
+__weak void FillOutputData(const OutputData& od, topic::remote_to::Message& pub)
+{
+    (void)od;
+    (void)pub;
 }
 
 /**
@@ -162,6 +194,7 @@ bool Dr16Protocol::IsValidChannel(uint16_t ch0, uint16_t ch1, uint16_t ch2, uint
     if (ch1 < kMinChannel || ch1 > kMaxChannel) return false;
     if (ch2 < kMinChannel || ch2 > kMaxChannel) return false;
     if (ch3 < kMinChannel || ch3 > kMaxChannel) return false;
+
     return true;
 }
 
@@ -174,45 +207,8 @@ bool Dr16Protocol::IsValidSwitch(uint8_t sw1, uint8_t sw2)
 {
     if (sw1 != SWITCH_UP && sw1 != SWITCH_MID && sw1 != SWITCH_DOWN) return false;
     if (sw2 != SWITCH_UP && sw2 != SWITCH_MID && sw2 != SWITCH_DOWN) return false;
+
     return true;
-}
-
-void Dr16Protocol::FillOutputData(const OutputData& od, Message& pub)
-{
-    processChannel(pub, od);
-
-    switch (od.sw.sw1)
-    {
-        case SWITCH_UP:
-            pub.chassis_mode = ChassisMode::Spin;
-            break;
-        case SWITCH_MID:
-            pub.chassis_mode = ChassisMode::Normal;
-            break;
-        default:
-            pub.chassis_mode = ChassisMode::Normal;
-            break;
-    }
-
-    switch (od.sw.sw2)
-    {
-        case SWITCH_UP:
-            pub.shoot_ctrl = StartMode::On;
-            break;
-        case SWITCH_MID:
-            pub.shoot_ctrl  = StartMode::Off;
-            pub.reload_ctrl = StartMode::Off;
-            break;
-        case SWITCH_DOWN:
-            pub.reload_ctrl = StartMode::On;
-            break;
-        default:
-            pub.shoot_ctrl  = StartMode::Off;
-            pub.reload_ctrl = StartMode::Off;
-            break;
-    }
-
-    pub.version++;
 }
 
 REGISTER_REMOTE(Dr16Protocol, kFrameSizeDR16, remote::Priority::Low, 3, dr16);

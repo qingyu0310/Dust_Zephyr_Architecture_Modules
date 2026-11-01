@@ -56,7 +56,7 @@ TaskResult Remote::Task(void* context)
 /**
  * @brief Retry 钩子：遥控器失联后把发布数据清零并重进任务
  *
- * 只清一次（last_valid_ms 置 0 作为标记），后续超时周期不再重复打日志与发布。
+ * 只清一次（lost 置位作为标记），后续超时周期不再重复打日志与发布。
  *
  * @param context Remote 实例
  * @return true=重进任务
@@ -65,9 +65,9 @@ bool Remote::OnRetry(void* context)
 {
     auto* self = static_cast<Remote*>(context);
 
-    if (self->detect_.last_valid_ms != 0) {
+    if (!self->detect_.lost) {
         DUST_LOG_ERR("lost %s", self->detect_.locked->name);
-        self->detect_.last_valid_ms = 0;
+        self->detect_.lost = true;
     }
 
     self->pub_ = {};
@@ -187,7 +187,7 @@ void Remote::HandleDetecting()
 }
 
 /**
- * @brief 已锁定协议解码 — 直接走 Decode，连续失败后回到探测。
+ * @brief 已锁定协议解码 — 每帧从空消息完整构造，version 由框架自增
  */
 void Remote::HandleLocked()
 {
@@ -199,10 +199,16 @@ void Remote::HandleLocked()
 
     while (frame_.frame_pos_ >= entry->frame_size)
     {
-        if (entry->protocol->Decode(frame_.frame_buf_, entry->frame_size, pub_))
+        topic::remote_to::Message frame_msg {};
+
+        if (entry->protocol->Decode(frame_.frame_buf_, entry->frame_size, frame_msg))
         {
-            if (detect_.last_valid_ms == 0) {
+            frame_msg.version = pub_.version + 1;
+            pub_ = frame_msg;
+
+            if (detect_.lost) {
                 DUST_LOG_INF("reconnect %s", entry->name);
+                detect_.lost = false;
             }
             detect_.last_valid_ms = k_uptime_get_32();
             detect_.fail_count = 0;
@@ -255,6 +261,7 @@ void Remote::ResetDetect()
     detect_.locked         = nullptr;
     detect_.state          = DetectState::Detecting;
     detect_.fail_count     = 0;
+    detect_.lost           = false;
     detect_.probe          = {};
 }
 

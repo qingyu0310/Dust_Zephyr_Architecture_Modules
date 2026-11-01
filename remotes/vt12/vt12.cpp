@@ -11,7 +11,7 @@
 
 #include "protocol_base.hpp"
 #include "remote.hpp"
-#include "log.hpp"
+#include "vt12.hpp"
 
 using namespace topic::remote_to;
 
@@ -36,12 +36,7 @@ public:
     bool Decode(const uint8_t *buffer, uint8_t len, topic::remote_to::Message &pub) override;
 
 private:
-    struct OutputData {
-        Mouse    mouse;
-        Keyboard keyboard;
-    };
-
-    static void FillOutputData(const OutputData &od, topic::remote_to::Message &pub);
+    static void DefaultFillOutputData(const OutputData &od, topic::remote_to::Message &pub);
 };
 
 /**
@@ -81,55 +76,70 @@ bool Vt12Protocol::Validate(const uint8_t* buffer, uint8_t len)
  */
 bool Vt12Protocol::Decode(const uint8_t* buffer, uint8_t len, Message& pub)
 {
-    static KeyboardState keyboard_state_{};
-
     OutputData od{};
 
     int16_t dx = (int16_t)((uint16_t)buffer[6]  | ((uint16_t)buffer[7]  << 8));
     int16_t dy = (int16_t)((uint16_t)buffer[8]  | ((uint16_t)buffer[9]  << 8));
     int16_t dz = (int16_t)((uint16_t)buffer[10] | ((uint16_t)buffer[11] << 8));
 
-    constexpr float kMouseScaleX = 30.0f;
-    constexpr float kMouseScaleY = 2.0f;
-    constexpr float kMouseScaleZ = 1.0f;
-
-    od.mouse.x      = normMouse(static_cast<float>(dx), kMouseScaleX);
-    od.mouse.y      = normMouse(static_cast<float>(dy), kMouseScaleY);
-    od.mouse.z      = normMouse(static_cast<float>(dz), kMouseScaleZ);
+    od.mouse.x      = normMouse(static_cast<float>(dx));
+    od.mouse.y      = normMouse(static_cast<float>(dy));
+    od.mouse.z      = normMouse(static_cast<float>(dz));
     od.mouse.left   = buffer[12] != 0;
     od.mouse.right  = buffer[13] != 0;
 
-    Keyboard cur_raw { .all = static_cast<uint16_t>((uint16_t)buffer[14] | ((uint16_t)buffer[15] << 8)) };
-    keyboard_state_.Process(od.keyboard, cur_raw);
+    od.keyboard.all = static_cast<uint16_t>((uint16_t)buffer[14] | ((uint16_t)buffer[15] << 8));    // 原始按键位，长按/切换由映射层处理
 
+    DefaultFillOutputData(od, pub);
     FillOutputData(od, pub);
+    ValidateOutput(pub);
+
     return true;
 }
 
 /**
- * @brief 填充输出数据到共享消息
+ * @brief 默认映射：协议输出 → 业务语义消息
  * @param od   协议解析后的内部数据
  * @param pub  输出消息
  */
-void Vt12Protocol::FillOutputData(const OutputData& od, Message& pub)
+void Vt12Protocol::DefaultFillOutputData(const OutputData& od, Message& pub)
 {
-    pub.chassisy = od.keyboard.w ? 1.0f : od.keyboard.s ? -1.0f : 0.0f;
-    pub.chassisx = od.keyboard.a ? 1.0f : od.keyboard.d ? -1.0f : 0.0f;
-    pub.pitch    = od.mouse.y;
-    pub.yaw      = od.mouse.x;
+    constexpr float kMouseSensitivityX = 30.0f;
+    constexpr float kMouseSensitivityY = 2.0f;
+    constexpr uint16_t kKeyboardMode = 0;    // 全键长按；改位掩码即可让指定键走切换
 
-    if (od.keyboard.shift) {
+    static KeyboardState keyboard_state_ { kKeyboardMode };
+
+    Keyboard kb {};
+
+    keyboard_state_.Process(kb, od.keyboard);
+
+    pub.chassisy = kb.w ? 1.0f : kb.s ? -1.0f : 0.0f;
+    pub.chassisx = kb.a ? 1.0f : kb.d ? -1.0f : 0.0f;
+    pub.pitch    = ClampAxis(od.mouse.y * kMouseSensitivityY);
+    pub.yaw      = ClampAxis(od.mouse.x * kMouseSensitivityX);
+
+    if (kb.shift) {
         pub.chassis_mode = ChassisMode::Spin;
     }  else {
         pub.chassis_mode = ChassisMode::Normal;
     }
 
-    pub.shoot_ctrl    = od.keyboard.f  ? StartMode::On : StartMode::Off;
+    pub.shoot_ctrl    = kb.f           ? StartMode::On : StartMode::Off;
     pub.reload_ctrl   = od.mouse.left  ? StartMode::On : StartMode::Off;
     pub.autoaim_ctrl  = od.mouse.right ? StartMode::On : StartMode::Off;
-    pub.supercap_ctrl = od.keyboard.v  ? StartMode::On : StartMode::Off;
+    pub.supercap_ctrl = kb.v           ? StartMode::On : StartMode::Off;
+}
 
-    pub.version++;
+/**
+ * @brief 后处理入口（__weak），用户区按需覆盖
+ * @param od   协议解析后的内部数据
+ * @param pub  已被默认映射填好的业务消息
+ */
+__weak void FillOutputData(const OutputData& od, topic::remote_to::Message& pub)
+{
+    (void)od;
+    (void)pub;
 }
 
 REGISTER_REMOTE(Vt12Protocol, kFrameSizeVT12, remote::Priority::Medium, 3, vt12);

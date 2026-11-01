@@ -22,7 +22,8 @@ struct Mouse
     float left = 0.0f, right = 0.0f;
 };
 
-union Keyboard {
+union Keyboard 
+{
     uint16_t all;
     struct {
         uint16_t w     : 1;  // bit 0
@@ -44,21 +45,48 @@ union Keyboard {
     };
 };
 
+/**
+ * @brief 键盘按键模式处理 — 把原始按键位转成"长按 / 切换"两种语义
+ *
+ * 每个 bit 对应一个键：bit=0 长按（按住才是 1），bit=1 切换（按一下翻转）。
+ * 由映射层持有，映射规则和状态都归映射层。
+ */
 struct KeyboardState
 {
-    Keyboard toggle_output{};
-    uint16_t last_raw_all = 0;
-    uint16_t keyboard_mode = 0;
+public:
+    /**
+     * @brief 默认构造 — 全键长按
+     */
+    KeyboardState() : keyboard_mode(0) {}
 
+    /**
+     * @brief 构造并指定切换键掩码
+     * @param mode  bit=1 的键走切换模式
+     */
+    explicit KeyboardState(uint16_t mode) : keyboard_mode(mode) {}
+
+    /**
+     * @brief 处理一帧原始按键
+     * @param current_output  处理结果（长按键取原始值，切换键取翻转值）
+     * @param current_raw     本帧原始按键位
+     */
     void Process(Keyboard& current_output, const Keyboard& current_raw)
     {
-        uint16_t trigger = current_raw.all & (~last_raw_all);
-        uint16_t toggle_mask = keyboard_mode;
-        toggle_output.all ^= (trigger & toggle_mask);
-        uint16_t normal_mask = ~toggle_mask;
-        current_output.all = (toggle_output.all & toggle_mask) | (current_raw.all & normal_mask);
-        last_raw_all = current_raw.all;
+        uint16_t trigger     = current_raw.all & (~last_raw_all);   	// 本帧新按下的键
+		uint16_t toggle_mask = keyboard_mode;                       	// bit=1 的键走切换模式
+		toggle_output.all   ^= (trigger & toggle_mask);             	// 切换键：按一次翻转
+		uint16_t normal_mask = ~toggle_mask;
+		current_output.all   = (toggle_output.all & toggle_mask)    	// 切换键：用翻转后的值
+							 | (current_raw.all   & normal_mask);   	// 其余键：用当前原始值（长按）
+
+		last_raw_all = current_raw.all;
     }
+
+private:
+	const uint16_t keyboard_mode;     		// bit=1 的键走切换模式，默认全 0（全长按）
+
+    Keyboard toggle_output {};     			// 切换键的保持状态
+    uint16_t last_raw_all  = 0;    			// 上一帧原始按键位，用于边沿检测
 };
 
 /**
@@ -93,31 +121,47 @@ inline float normChannelInv(int16_t v, int16_t center, float inv_max_dist)
 }
 
 /**
- * @brief 鼠标值归一化
+ * @brief 鼠标原始差值归一化 — 解析层用，不做灵敏度
  * @param v      原始鼠标差值
- * @param scale  缩放系数
- * @return float 归一化结果
+ * @return float 归一化结果 [-1, 1]
  */
-inline float normMouse(float v, float scale)
+inline float normMouse(float v)
 {
     constexpr float kInvNorm = 1.0f / 32767.0f;
-    v *= scale * kInvNorm;
+    return v * kInvNorm;
+}
+
+/**
+ * @brief 连续量钳位 — 越界钳到 ±1，NaN 归零
+ * @param v  输入值
+ * @return float  钳位结果
+ */
+inline float ClampAxis(float v)
+{
+    if (!(v == v)) return  0.0f;
     if (v >  1.0f) return  1.0f;
     if (v < -1.0f) return -1.0f;
     return v;
 }
 
 /**
- * @brief 通道/键盘/鼠标合成到共享消息
- * @tparam OutData  协议内部数据结构（须有 .ch / .mouse / .keyboard）
- * @param pub  输出消息
- * @param od   协议解析后的内部数据
+ * @brief 输出消息兜底校验 — 弱函数跑完后由框架调用
+ *
+ * 连续量钳到边界，NaN 归零，枚举越界归到安全默认值。
+ * 用户区不可见：不提供声明给用户覆盖，也不在协议头文件里出现。
+ *
+ * @param pub  待校验的业务消息
  */
-template<typename OutData>
-inline void processChannel(topic::remote_to::Message& pub, const OutData& od)
+inline void ValidateOutput(topic::remote_to::Message& pub)
 {
-    pub.chassisy = od.keyboard.w ? 1.0f : od.keyboard.s ? -1.0f : od.ch.chassisy;
-    pub.chassisx = od.keyboard.a ? 1.0f : od.keyboard.d ? -1.0f : od.ch.chassisx;
-    pub.pitch    = od.mouse.y           + od.ch.pitch;
-    pub.yaw      = od.mouse.x           + od.ch.yaw;
+    pub.chassisx = ClampAxis(pub.chassisx);
+    pub.chassisy = ClampAxis(pub.chassisy);
+    pub.yaw      = ClampAxis(pub.yaw);
+    pub.pitch    = ClampAxis(pub.pitch);
+
+    if (pub.chassis_mode  > topic::remote_to::ChassisMode::Spin) pub.chassis_mode  = topic::remote_to::ChassisMode::Normal;
+    if (pub.shoot_ctrl    > topic::remote_to::StartMode::On)     pub.shoot_ctrl    = topic::remote_to::StartMode::Off;
+    if (pub.reload_ctrl   > topic::remote_to::StartMode::On)     pub.reload_ctrl   = topic::remote_to::StartMode::Off;
+    if (pub.autoaim_ctrl  > topic::remote_to::StartMode::On)     pub.autoaim_ctrl  = topic::remote_to::StartMode::Off;
+    if (pub.supercap_ctrl > topic::remote_to::StartMode::On)     pub.supercap_ctrl = topic::remote_to::StartMode::Off;
 }

@@ -11,6 +11,7 @@
 
 #include "protocol_base.hpp"
 #include "remote.hpp"
+#include "vt13.hpp"
 #include "log.hpp"
 
 using namespace topic::remote_to;
@@ -36,17 +37,11 @@ public:
     bool Decode(const uint8_t *buffer, uint8_t len, topic::remote_to::Message &pub) override;
 
 private:
-    static constexpr uint8_t  kSOF1       = 0xA9;
-    static constexpr uint8_t  kSOF2       = 0x53;
+    static constexpr uint8_t  kSoF1       = 0xA9;
+    static constexpr uint8_t  kSoF2       = 0x53;
     static constexpr uint16_t kMinChannel = 364;
     static constexpr uint16_t kMaxChannel = 1684;
     
-    enum SwitchCNS { 
-        SWITCH_C = 0, 
-        SWITCH_N, 
-        SWITCH_S 
-    };
-
     struct RawData {
         uint8_t  start_of_frame_1;
         uint8_t  start_of_frame_2;
@@ -72,23 +67,8 @@ private:
         uint16_t crc16;
     } __attribute__((packed));
 
-    struct Switch {
-        uint8_t fn1, fn2;
-        uint8_t trigger;
-        uint8_t pause;
-        uint8_t cns;
-        float   wheel;
-    };
-
-    struct OutputData {
-        topic::remote_to::Channel  ch;
-        Switch                     sw;
-        Mouse    mouse;
-        Keyboard keyboard;
-    };
-
     static bool IsValidChannel(const RawData *raw);
-    static void FillOutputData(const OutputData &od, topic::remote_to::Message &pub);
+    static void DefaultFillOutputData(const OutputData &od, topic::remote_to::Message &pub);
 };
 
 /**
@@ -100,7 +80,7 @@ private:
 bool Vt13Protocol::Validate(const uint8_t* buffer, uint8_t len)
 {
     if (len != kFrameSizeVT13) return false;
-    if (buffer[0] != kSOF1 || buffer[1] != kSOF2) return false;
+    if (buffer[0] != kSoF1 || buffer[1] != kSoF2) return false;
 
     const RawData* raw_data = reinterpret_cast<RawData const*>(buffer);
 
@@ -118,7 +98,7 @@ bool Vt13Protocol::Decode(const uint8_t* buffer, uint8_t len, Message& pub)
 {
     const RawData* raw_data = reinterpret_cast<RawData const*>(buffer);
 
-    if (raw_data->start_of_frame_1 != kSOF1 || raw_data->start_of_frame_2 != kSOF2)
+    if (raw_data->start_of_frame_1 != kSoF1 || raw_data->start_of_frame_2 != kSoF2)
     {
         DUST_LOG_ERR("invalid header");
         return false;
@@ -129,8 +109,6 @@ bool Vt13Protocol::Decode(const uint8_t* buffer, uint8_t len, Message& pub)
         DUST_LOG_ERR("channel out of range");
         return false;
     }
-
-    static KeyboardState keyboard_state_{};
 
     OutputData od{};
 
@@ -149,21 +127,19 @@ bool Vt13Protocol::Decode(const uint8_t* buffer, uint8_t len, Message& pub)
     od.sw.cns       = raw_data->cns;
     od.sw.wheel     = normChannelInv(raw_data->wheel, kCenter, kInvChannelSpan);
 
-    constexpr float kMouseScaleX = 30.0f;
-    constexpr float kMouseScaleY = 2.0f;
-    constexpr float kMouseScaleZ = 1.0f;
-
-    od.mouse.x      = normMouse(static_cast<float>(raw_data->mouse_x), kMouseScaleX);
-    od.mouse.y      = normMouse(static_cast<float>(raw_data->mouse_y), kMouseScaleY);
-    od.mouse.z      = normMouse(static_cast<float>(raw_data->mouse_z), kMouseScaleZ);
+    od.mouse.x      = normMouse(static_cast<float>(raw_data->mouse_x));
+    od.mouse.y      = normMouse(static_cast<float>(raw_data->mouse_y));
+    od.mouse.z      = normMouse(static_cast<float>(raw_data->mouse_z));
 
     od.mouse.left   = raw_data->mouse_l != 0;
     od.mouse.right  = raw_data->mouse_r != 0;
 
-    Keyboard cur_raw { .all = raw_data->keyboard };
-    keyboard_state_.Process(od.keyboard, cur_raw);
+    od.keyboard.all = raw_data->keyboard;    // 原始按键位，长按/切换由映射层处理
 
+    DefaultFillOutputData(od, pub);
     FillOutputData(od, pub);
+    ValidateOutput(pub);
+
     return true;
 }
 
@@ -183,13 +159,26 @@ bool Vt13Protocol::IsValidChannel(const RawData *raw)
 }
 
 /**
- * @brief 填充输出数据到共享消息
+ * @brief 默认映射：协议输出 → 业务语义消息
  * @param od   协议解析后的内部数据
  * @param pub  输出消息
  */
-void Vt13Protocol::FillOutputData(const OutputData& od, Message& pub)
+void Vt13Protocol::DefaultFillOutputData(const OutputData& od, Message& pub)
 {
-    processChannel(pub, od);
+    constexpr float    kMouseSensitivityX = 30.0f;
+    constexpr float    kMouseSensitivityY = 2.0f;
+    constexpr uint16_t kKeyboardMode      = 0;    // 全键长按；改位掩码即可让指定键走切换
+
+    static KeyboardState keyboard_state_ { kKeyboardMode };
+
+    Keyboard kb {};
+
+    keyboard_state_.Process(kb, od.keyboard);
+
+    pub.chassisy = kb.w ? 1.0f : kb.s ? -1.0f : od.ch.chassisy;
+    pub.chassisx = kb.a ? 1.0f : kb.d ? -1.0f : od.ch.chassisx;
+    pub.pitch    = ClampAxis(od.mouse.y * kMouseSensitivityY + od.ch.pitch);
+    pub.yaw      = ClampAxis(od.mouse.x * kMouseSensitivityX + od.ch.yaw);
 
     switch (od.sw.cns)
     {
@@ -206,12 +195,21 @@ void Vt13Protocol::FillOutputData(const OutputData& od, Message& pub)
             break;
     }
 
-    pub.reload_ctrl   = od.sw.fn1     ? StartMode::On : StartMode::Off;
-    pub.shoot_ctrl    = od.sw.fn2     ? StartMode::On : StartMode::Off;
-    pub.autoaim_ctrl  = od.sw.fn2     ? StartMode::On : StartMode::Off;
-    pub.supercap_ctrl = od.keyboard.v ? StartMode::On : StartMode::Off;
+    pub.reload_ctrl   = od.sw.fn1 ? StartMode::On : StartMode::Off;
+    pub.shoot_ctrl    = od.sw.fn2 ? StartMode::On : StartMode::Off;
+    pub.autoaim_ctrl  = od.sw.fn2 ? StartMode::On : StartMode::Off;
+    pub.supercap_ctrl = kb.v      ? StartMode::On : StartMode::Off;
+}
 
-    pub.version++;
+/**
+ * @brief 后处理入口（__weak），用户区按需覆盖
+ * @param od   协议解析后的内部数据
+ * @param pub  已被默认映射填好的业务消息
+ */
+__weak void FillOutputData(const OutputData& od, topic::remote_to::Message& pub)
+{
+    (void)od;
+    (void)pub;
 }
 
 REGISTER_REMOTE(Vt13Protocol, kFrameSizeVT13, remote::Priority::High, 3, vt13);
