@@ -42,6 +42,19 @@ public:
     void Init(Config cfg) { cfg_ = cfg; }
     void CanCpltRxCallback(uint8_t* buffer);
 
+    /**
+     * @brief 把目标电流写入 C610 控制帧的对应槽位（大端 int16）
+     * @param data    8 字节控制帧数据
+     * @param current 目标电流 A
+     */
+    void PackCurrent(uint8_t* data, float current) const
+    {
+        const int16_t raw = static_cast<int16_t>(current * kCurrentScale);
+
+        data[Slot() * 2]     = static_cast<uint8_t>(raw >> 8);
+        data[Slot() * 2 + 1] = static_cast<uint8_t>(raw & 0xFF);
+    }
+
     Snapshot ReadAll() const
     {
         Snapshot snap;
@@ -69,9 +82,13 @@ public:
     float GetNowVelocity()    const { return now_velocity_; }
 
 private:
-    static constexpr uint16_t kEncPerRound = 8192;
-    static constexpr float    kCurrentK    = 10.0f / 16384.0f;
-    static constexpr float    kCurrentMax  = 10.0f;
+    static constexpr uint16_t kEncPerRound   = 8192;
+    static constexpr float    kCurrentK      = 10.0f / 16384.0f;
+    static constexpr float    kCurrentMax    = 10.0f;
+    static constexpr float    kCurrentScale  = 16384.0f / 10.0f;		// ±10A 对应 ±16384
+    static constexpr uint16_t kControlBaseId = 0x201;					// 控制帧槽位基准
+
+    uint8_t Slot() const { return static_cast<uint8_t>(cfg_.rx_id - kControlBaseId); }
 
     Config cfg_ {};
 
@@ -116,6 +133,19 @@ public:
     void Init(Config cfg) { cfg_ = cfg; }
     void CanCpltRxCallback(uint8_t* buffer);
 
+    /**
+     * @brief 把目标电流写入 C620 控制帧的对应槽位（大端 int16）
+     * @param data    8 字节控制帧数据
+     * @param current 目标电流 A
+     */
+    void PackCurrent(uint8_t* data, float current) const
+    {
+        const int16_t raw = static_cast<int16_t>(current * kCurrentScale);
+
+        data[Slot() * 2]     = static_cast<uint8_t>(raw >> 8);
+        data[Slot() * 2 + 1] = static_cast<uint8_t>(raw & 0xFF);
+    }
+
     Snapshot ReadAll() const
     {
         Snapshot snap;
@@ -144,9 +174,13 @@ public:
     float GetNowTemperature() const { return now_temp_;     }
 
 private:
-    static constexpr uint16_t kEncPerRound = 8192;
-    static constexpr float    kCurrentK    = 20.0f / 16384.0f;
-    static constexpr float    kCurrentMax  = 20.0f;
+    static constexpr uint16_t kEncPerRound   = 8192;
+    static constexpr float    kCurrentK      = 20.0f / 16384.0f;
+    static constexpr float    kCurrentMax    = 20.0f;
+    static constexpr float    kCurrentScale  = 16384.0f / 20.0f;		// ±20A 对应 ±16384
+    static constexpr uint16_t kControlBaseId = 0x201;					// 控制帧槽位基准
+
+    uint8_t Slot() const { return static_cast<uint8_t>(cfg_.rx_id - kControlBaseId); }
 
     Config cfg_ {};
 
