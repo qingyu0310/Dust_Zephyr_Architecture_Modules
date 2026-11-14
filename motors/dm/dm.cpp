@@ -96,7 +96,7 @@ void DmMotor::Init(Config cfg)
 bool DmMotor::PwrLossCheck()
 {
     power_lost_ = (flag_ == pre_flag_);
-    pre_flag_ = flag_;
+    pre_flag_   = flag_;
     return power_lost_;
 }
 

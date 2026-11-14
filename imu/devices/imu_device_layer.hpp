@@ -144,11 +144,9 @@ public:
         DUST_LOG_INF("calib gyro_off: %.6f %.6f %.6f",  (double)offset_.gyro_offset[0],  (double)offset_.gyro_offset[1],  (double)offset_.gyro_offset[2]);
         DUST_LOG_INF("calib accel_off: %.6f %.6f %.6f", (double)offset_.accel_offset[0], (double)offset_.accel_offset[1], (double)offset_.accel_offset[2]);
 
-        // 校准完成，写入 flash
+        // 校准完成，写入 flash；未启用 flash 时跳过
         if (EXEC_FLASH_WRITE(flash::kPartCalib.offset, &offset_, sizeof(ImuOffsetData))) {
             DUST_LOG_INF("calib flash save ok");
-        } else {
-            DUST_LOG_ERR("calib flash save failed");
         }
 
         calibrated_ = true;

@@ -37,7 +37,7 @@ namespace imu {
  *
  * @param mode ImuStartMode::Normal / AutoCalib / AutoIdent
  */
-bool ImuManager::Init(ImuStartMode mode, const ImuOffsetData& offset)
+bool ImuManager::Init(ImuStartMode mode, const ImuOffsetData& offset, const alg::attitude::QuaternionEkf::Config& ekf, const heater::Config& heater_cfg)
 {
     ready_ = false;
 
@@ -50,7 +50,7 @@ bool ImuManager::Init(ImuStartMode mode, const ImuOffsetData& offset)
     // 用户区传入的静态零偏，驱动内部深拷贝
     source_->SetOffset(offset);
 
-    if (!heater_.Init()) {
+    if (!heater_.Init(heater_cfg)) {
         DUST_LOG_ERR("heater init failed");
         return false;
     }
@@ -72,7 +72,7 @@ bool ImuManager::Init(ImuStartMode mode, const ImuOffsetData& offset)
 
     source_->LateInit();
 
-    attitude_.Init();
+    attitude_.Init(ekf);
 
     ready_ = true;
     DUST_LOG_INF("imu ready");
@@ -113,14 +113,15 @@ TaskResult ImuManager::Task(void* context)
 
     // 用真实经过时间修正当前样本积分周期，避免调度抖动直接传进 EKF。
     self->sample_.dt = kMeasureDT();
-
     self->heater_.Update(self->sample_.temp);
-
     self->attitude_.Process(self->sample_, self->pub_);
-
-    self->pub_.timestamp = k_uptime_get_32();
-
+    self->pub_.version++;
+	
     zbus_chan_pub(&pub_imu_to, &self->pub_, K_MSEC(1));
+
+    if (self->hook_ != nullptr) {
+        self->hook_();
+    }
 
     return TaskResult::Continue;
 }

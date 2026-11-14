@@ -16,23 +16,6 @@
 #include "log.hpp"
 #include "stability.hpp"
 
-
-namespace {
-    static constexpr float kMaxDuty     = 0.95f;
-    static constexpr float kMinDuty     = 0.0f;
-    static constexpr float kTargetTemp  = 40.0f;
-
-    static constexpr alg::pid::Pid::Config kPidConfig {
-        .kp         = 0.19f, 
-        .ki         = 0.03f, 
-        .kd         = 0.0005f,
-        .iOutMax    = 0.5f, 
-        .outMax     = kMaxDuty, 
-        .dt         = 0.001f,
-    };
-};
-
-
 #pragma message "Compiling Modules/Imu/Drivers/Heater"
 
 namespace heater {
@@ -41,19 +24,21 @@ namespace heater {
  * @brief 初始化 PWM 加热器与 PID 控制器
  *
  * 从 devicetree 获取 IMU 加热 PWM 实例，
- * 初始化 PID 控制器并设置初始占空比为 0。
+ * 初始化 PID 控制器并设置初始占空比为下限。
  *
+ * @param cfg 加热器配置
  * @return true  初始化成功
  * @return false PWM 初始化失败
  */
-bool Heater::Init()
+bool Heater::Init(const Config& cfg)
 {
     static const pwm_dt_spec heater_pwm = PWM_DT_SPEC_GET(DT_ALIAS(imu_pwm));
     if (!heater_pwm_.init(heater_pwm)) return false;
 
-    pid_.Init(kPidConfig);
+    cfg_ = cfg;
+    pid_.Init(cfg_.pid);
 
-    duty_ = kMinDuty;
+    duty_ = cfg_.duty_min;
     initialized_ = true;
 
     return heater_pwm_.SetDuty(duty_);
@@ -70,9 +55,9 @@ void Heater::Update(float temperature)
 {
     if (!initialized_) return;
 
-    duty_ = pid_.Calc(kTargetTemp, temperature);
+    duty_ = pid_.Calc(cfg_.target_temp, temperature);
 
-    duty_ = std::clamp(duty_, kMinDuty, kMaxDuty);
+    duty_ = std::clamp(duty_, cfg_.duty_min, cfg_.duty_max);
     (void)heater_pwm_.SetDuty(duty_);
 }
 
@@ -83,7 +68,7 @@ void Heater::Update(float temperature)
  */
 void Heater::Off()
 {
-    duty_ = kMinDuty;
+    duty_ = cfg_.duty_min;
     pid_.SetIntegralError(0.0f);
     (void)heater_pwm_.Stop();
 }
@@ -107,7 +92,7 @@ bool Heater::Preheat(float temperature, float dt_s)
     constexpr float kTargetTol  = 0.5f;     // 目标温度容差 (°C)
 
     Update(temperature);
-    const bool near_target = std::abs(temperature - kTargetTemp) <= kTargetTol;
+    const bool near_target = std::abs(temperature - cfg_.target_temp) <= kTargetTol;
     const bool stable_ok   = stable->Check(temperature, dt_s, kSlopeLimit, kNoiseLimit, kDriftLimit) && near_target;
 
     if (stable_ok) {

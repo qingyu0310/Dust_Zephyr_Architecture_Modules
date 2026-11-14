@@ -17,7 +17,12 @@ namespace attitude {
 class Processor final
 {
 public:
-    void Init();
+    /**
+     * @brief 初始化姿态解算器
+     * @param cfg EKF 配置
+     */
+    void Init(const alg::attitude::QuaternionEkf::Config& cfg);
+
     void Process(const Sample& sample, topic::imu_to::Message& pub);
 
 private:

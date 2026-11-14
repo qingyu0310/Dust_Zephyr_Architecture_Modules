@@ -7,7 +7,6 @@
  */
 
 #include "processor.hpp"
-#include "log.hpp"
 #include <cstring>
 
 #pragma message "Compiling Modules/Imu/Drivers/Processor"
@@ -15,13 +14,10 @@ namespace attitude {
 
 /**
  * @brief 初始化姿态解算器
- *
- * 配置加速度计低通滤波时间常数后初始化 EKF。
+ * @param cfg EKF 配置
  */
-void Processor::Init()
+void Processor::Init(const alg::attitude::QuaternionEkf::Config& cfg)
 {
-    alg::attitude::QuaternionEkf::Config cfg;
-
     ekf_.Init(cfg);
 }
 
@@ -42,7 +38,7 @@ void Processor::Process(const Sample& sample, topic::imu_to::Message& pub)
 
     memcpy(pub.quaternion, state.q,  	 sizeof(pub.quaternion));
     memcpy(pub.gyro,       state.w,  	 sizeof(pub.gyro));
-    memcpy(pub.accel,      sample.accel, sizeof(pub.accel));
+    memcpy(pub.accel,      state.a,  	 sizeof(pub.accel));
 
     pub.roll        = state.roll;
     pub.pitch       = state.pitch;

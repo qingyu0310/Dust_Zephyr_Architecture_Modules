@@ -26,7 +26,7 @@ struct ImuEntry {
 
 enum class ImuStartMode : uint8_t
 {
-    Normal = 0,         // 开环启动，用于调试
+    Normal = 0,         // 正常模式
     AutoCalib,          // 自动校准，设置陀螺仪偏置
 };
 
@@ -37,11 +37,13 @@ public:
 
     /**
      * @brief 初始化 IMU 管理器
-     * @param mode   启动模式
-     * @param offset 静态零偏，默认全零
+     * @param mode       启动模式
+     * @param offset     静态零偏
+     * @param ekf        EKF 配置
+     * @param heater_cfg 加热 PID 配置
      * @return true=成功
      */
-    bool Init(ImuStartMode mode = ImuStartMode::Normal, const ImuOffsetData& offset = {});
+    bool Init(ImuStartMode mode, const ImuOffsetData& offset, const alg::attitude::QuaternionEkf::Config& ekf, const heater::Config& heater_cfg);
 
     bool Start(ThreadPrio prio = ThreadPrio::Normal)
     {
@@ -54,6 +56,37 @@ public:
     }
 
     bool ReadSample(Sample& sample) { return source_->Read(sample); }
+
+    /**
+     * @brief 本拍样本
+     * @return 样本引用
+     */
+    const Sample& GetSample() const { return sample_; }
+
+    /**
+     * @brief 本拍已发布的消息
+     * @return 消息引用
+     */
+    const topic::imu_to::Message& GetMessage() const { return pub_; }
+
+    /**
+     * @brief 加热器
+     * @return Heater 引用
+     */
+    heater::Heater& Heater() { return heater_; }
+
+    /**
+     * @brief 每拍回调，由用户区设置
+     *
+     * 在 Task 末尾调用，用户区通过自己持有的实例访问本拍数据。
+     */
+    using Hook = void (*)();
+
+    /**
+     * @brief 设置每拍回调
+     * @param hook 回调函数，nullptr=不调用
+     */
+    void SetHook(Hook hook) { hook_ = hook; }
 
     /**
      * @brief 暂停 / 恢复采集线程
@@ -69,6 +102,8 @@ private:
 
     topic::imu_to::Message  pub_        {};
     uint32_t                fail_count_ = 0;                        // 连续读失败次数（日志节流用）
+
+    Hook                    hook_       = nullptr;                  // 每拍回调
 
     Thread<2048>            thread_     {};
     bool                    ready_      = false;
