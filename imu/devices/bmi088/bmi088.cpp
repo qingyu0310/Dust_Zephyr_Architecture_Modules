@@ -147,7 +147,8 @@ bool Bmi088::LateInit()
 
     ImuOffsetData calib{};
     if (!EXEC_FLASH_READ(flash::kPartCalib.offset, &calib, sizeof(ImuOffsetData))) {
-        DUST_LOG_ERR("read calib from flash failed");
+        DUST_LOG_INF("no flash, use reg default");
+        return true;
     }
 
     if (calib.gyro_offset[0] != 0.0f || calib.gyro_offset[1] != 0.0f || calib.gyro_offset[2] != 0.0f) {

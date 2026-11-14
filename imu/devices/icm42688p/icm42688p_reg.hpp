@@ -149,8 +149,8 @@ constexpr uint8_t kWristCtrl3Default    = 0x93;
  * - gyro_scale/accel_scale: 无量纲比例
  */
 static constexpr ::ImuOffsetData kStaticOffset {
-    { -0.021454f, -0.010120f, -0.007212f },
-    { 0.012893f, -5.538631f, 9.977686f }
+    {  0.009049f,  0.011271f, -0.009992f },
+    { -0.420728f,  0.042918f,  1.061736f }
 };
 
 static constexpr ::ImuScaleData kStaticScale {

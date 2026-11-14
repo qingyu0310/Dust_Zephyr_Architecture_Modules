@@ -57,9 +57,12 @@ bool ImuManager::Init(ImuStartMode mode)
 
     if (mode == ImuStartMode::AutoCalib)
     {
-        if (!source_->Calibrate()) { 
-            DUST_LOG_ERR("calibrate failed"); 
-            return false; 
+        DUST_LOG_WRN("auto calib in 3s, keep the board still");
+        k_msleep(3000);
+
+        if (!source_->Calibrate()) {
+            DUST_LOG_ERR("calibrate failed");
+            return false;
         }
         DUST_LOG_INF("calibrate done");
     }
@@ -111,6 +114,8 @@ TaskResult ImuManager::Task(void* context)
     self->heater_.Update(self->sample_.temp);
 
     self->attitude_.Process(self->sample_, self->pub_);
+
+    self->pub_.timestamp = k_uptime_get_32();
 
     zbus_chan_pub(&pub_imu_to, &self->pub_, K_MSEC(1));
 
@@ -213,12 +218,8 @@ bool ImuManager::Preheat()
         return (delta_ns == 0) ? 0.001f : static_cast<float>(delta_ns) * 1.0e-9f;
     };
 
-    log_timer_.SetPeriod(10);
-
     while (true)
     {
-        log_timer_.Update();
-
         if (source_ == nullptr || !source_->Read(sample_)) {
             k_busy_wait(kWaitUs);
             continue;
@@ -229,9 +230,7 @@ bool ImuManager::Preheat()
         }
 
         // 预热打印，用于判断是否被稳定判据卡住
-        log_timer_.Clock([&](){
-            DUST_LOG_INF("%f,%f", (double)sample_.temp, (double)heater_.GetDuty());
-        });
+        DUST_LOG_DBG("imu_preheat", "%f,%f", (double)sample_.temp, (double)heater_.GetDuty());
 
         if (k_uptime_get() - Start_ms >= kTimeoutMs) {
             DUST_LOG_ERR("preheat timeout");

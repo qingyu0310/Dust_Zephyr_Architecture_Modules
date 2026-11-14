@@ -15,24 +15,31 @@
 
 namespace sbus {
 
-enum SwitchStatus
+enum class ThreePos
 {
-    SWITCH_UP   = 1,
-    SWITCH_MID  = 3,
-    SWITCH_DOWN = 2,
+    Up   = 1,
+    Mid  = 3,
+    Down = 2,
+};
+
+enum class TwoPos
+{
+    Up   = 1,
+    Down = 2,
 };
 
 struct Switch
 {
-    SwitchStatus sw1;
-    SwitchStatus sw2;
-    SwitchStatus sw3;
+    TwoPos   sa;
+    ThreePos sb;
+    ThreePos sc;
+    // TwoPos sd;   // 未用：遥控器上只有 SA/SB/SC 三个辅助开关
 };
 
 struct OutputData
 {
     topic::remote_to::Channel ch;
-    Switch                    sw;
+    Switch sw;
 };
 
 /**

@@ -91,12 +91,13 @@ void DmMotor::Init(Config cfg)
 
 /**
  * @brief 定时掉线检测
- *
+ * @return true=本拍无新反馈（掉线）
  */
-void DmMotor::PwrLossCheck()
+bool DmMotor::PwrLossCheck()
 {
     power_lost_ = (flag_ == pre_flag_);
     pre_flag_ = flag_;
+    return power_lost_;
 }
 
 /**
@@ -134,7 +135,7 @@ void DmMotor::CanCpltRxCallback(uint8_t* buffer)
         total_round_++;
     }
     total_encoder_ = total_round_ * (1 << 16) + enc     // 多圈绝对编码器值
-                     - ((1 << 15) - 1);                 // 去零偏（中心0x8000 → 0）
+                   - ((1 << 15) - 1);                   // 去零偏（中心0x8000 → 0）
 
     /* seqlock 写锁：允许其他中断，线程读到冲突时会自旋重试 */
     atomic_inc(&seq_);

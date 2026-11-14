@@ -111,7 +111,8 @@ bool Icm42688p::LateInit()
 
     ImuOffsetData calib{};
     if (!EXEC_FLASH_READ(flash::kPartCalib.offset, &calib, sizeof(ImuOffsetData))) {
-        DUST_LOG_ERR("read calib from flash failed");
+        DUST_LOG_INF("no flash, use reg default");
+        return true;
     }
     
     if (calib.gyro_offset[0] != 0.0f || calib.gyro_offset[1] != 0.0f || calib.gyro_offset[2] != 0.0f) {
@@ -134,9 +135,7 @@ bool Icm42688p::ReadRaw(ImuRawSample& raw)
     uint8_t motion_data[12] {};
     uint8_t temp_data[2]    {};
 
-    if (!SelectSegment(reg::kSegSelGeneral) ||
-        !ReadRegs(reg::kAccXH, motion_data, sizeof(motion_data)) ||
-        !ReadRegs(reg::kTempH, temp_data  , sizeof(temp_data))) 
+    if (!SelectSegment(reg::kSegSelGeneral) || !ReadRegs(reg::kAccXH, motion_data, sizeof(motion_data)) || !ReadRegs(reg::kTempH, temp_data  , sizeof(temp_data))) 
     {
         last_error_ = Error::ReadFailed;
         return false;

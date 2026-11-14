@@ -11,7 +11,7 @@
 #include <math.h>
 #include <stdint.h>
 #include <zephyr/kernel.h>
-#include <zephyr/sys/printk.h>
+#include "log.hpp"
 #include "partition.hpp"
 #include "w25q128.hpp"
 
@@ -127,24 +127,18 @@ public:
 
             for (uint8_t axis = 0; axis < 3; axis++) {
                 const float expected_gravity = accel_mean[axis] * gravity_scale;
-                offset_.accel_offset[axis] = accel_mean[axis] - expected_gravity;
+                offset_.accel_offset[axis]   = accel_mean[axis] - expected_gravity;
             }
         }
 
-        printk("calib gyro_off: %.6f %.6f %.6f\n",
-               (double)offset_.gyro_offset[0],
-               (double)offset_.gyro_offset[1],
-               (double)offset_.gyro_offset[2]);
-        printk("calib accel_off: %.6f %.6f %.6f\n",
-               (double)offset_.accel_offset[0],
-               (double)offset_.accel_offset[1],
-               (double)offset_.accel_offset[2]);
+        DUST_LOG_INF("calib gyro_off: %.6f %.6f %.6f",  (double)offset_.gyro_offset[0],  (double)offset_.gyro_offset[1],  (double)offset_.gyro_offset[2]);
+        DUST_LOG_INF("calib accel_off: %.6f %.6f %.6f", (double)offset_.accel_offset[0], (double)offset_.accel_offset[1], (double)offset_.accel_offset[2]);
 
         // 校准完成，写入 flash
         if (EXEC_FLASH_WRITE(flash::kPartCalib.offset, &offset_, sizeof(ImuOffsetData))) {
-            printk("calib flash save ok\n");
+            DUST_LOG_INF("calib flash save ok");
         } else {
-            printk("calib flash save failed\n");
+            DUST_LOG_ERR("calib flash save failed");
         }
 
         calibrated_ = true;
@@ -164,12 +158,8 @@ public:
             const float accel = ConvertAccel(raw.accel[axis]);
             const float gyro  = ConvertGyro (raw.gyro [axis]);
 
-            sample.accel[axis] = Correct(accel,
-                                         offset_.accel_offset[axis],
-                                         scale_.accel_scale[axis]);
-            sample.gyro [axis] = Correct(gyro,
-                                         offset_.gyro_offset[axis],
-                                         scale_.gyro_scale[axis]);
+            sample.accel[axis] = Correct(accel, offset_.accel_offset[axis], scale_.accel_scale[axis]);
+            sample.gyro [axis] = Correct(gyro,  offset_.gyro_offset[axis],  scale_.gyro_scale[axis]);
         }
 
         sample.temp = ConvertTemperature(raw.temp);

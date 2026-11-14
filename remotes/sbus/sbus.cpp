@@ -41,7 +41,8 @@ private:
     static constexpr uint16_t kCenter = 1024;
 
     static bool  IsValidChannel(uint16_t v) { return v >= kMin && v <= kMax; }
-    static void  ClassifySwitch(uint16_t v, SwitchStatus &status);
+    static void  ClassifyTwoPos(uint16_t v, TwoPos &status);
+    static void  ClassifyThreePos(uint16_t v, ThreePos &status);
     static void  DefaultFillOutputData(const OutputData &od, topic::remote_to::Message &pub);
 };
 
@@ -104,9 +105,9 @@ bool SbusProtocol::Decode(const uint8_t* buffer, uint8_t len, Message& pub)
     od.ch.yaw       = normChannelInv(raw_ch3, kCenter, kInvChannelSpan);
     od.ch.pitch     = normChannelInv(raw_ch2, kCenter, kInvChannelSpan);
 
-    ClassifySwitch(raw_ch5, od.sw.sw1);
-    ClassifySwitch(raw_ch6, od.sw.sw2);
-    ClassifySwitch(raw_ch7, od.sw.sw3);
+    ClassifyTwoPos(raw_ch5, od.sw.sa);
+    ClassifyThreePos(raw_ch6, od.sw.sb);
+    ClassifyThreePos(raw_ch7, od.sw.sc);
 
     DefaultFillOutputData(od, pub);
     FillOutputData(od, pub);
@@ -116,15 +117,25 @@ bool SbusProtocol::Decode(const uint8_t* buffer, uint8_t len, Message& pub)
 }
 
 /**
- * @brief  根据原始值三档分类拨杆位置
+ * @brief  两档拨杆分类
  * @param v  通道原始值
- * @return SwitchStatus  SWITCH_UP / SWITCH_MID / SWITCH_DOWN
+ * @param status  输出 Up / Down
  */
-void SbusProtocol::ClassifySwitch(uint16_t v, SwitchStatus &status)
+void SbusProtocol::ClassifyTwoPos(uint16_t v, TwoPos &status)
 {
-    if      (v == kMin)  status = SWITCH_UP;
-    else if (v == kMax)  status = SWITCH_DOWN;
-    else                 status = SWITCH_MID;
+    status = (v < kCenter) ? TwoPos::Up : TwoPos::Down;
+}
+
+/**
+ * @brief  三档拨杆分类
+ * @param v  通道原始值
+ * @param status  输出 Up / Mid / Down
+ */
+void SbusProtocol::ClassifyThreePos(uint16_t v, ThreePos &status)
+{
+    if      (v == kMin)  status = ThreePos::Up;
+    else if (v == kMax)  status = ThreePos::Down;
+    else                 status = ThreePos::Mid;
 }
 
 /**
@@ -139,35 +150,35 @@ void SbusProtocol::DefaultFillOutputData(const OutputData& od, Message& pub)
     pub.yaw      = od.ch.yaw;
     pub.pitch    = od.ch.pitch;
 
-    switch (od.sw.sw1)
+    switch (od.sw.sa)
     {
-        case SWITCH_UP:
+        case TwoPos::Up:
             pub.chassis_mode = ChassisMode::Normal;
             break;
-        case SWITCH_DOWN:
+        case TwoPos::Down:
         default:
 			pub.chassis_mode = ChassisMode::Spin;
             break;
     }
 
-    switch (od.sw.sw2)
+    switch (od.sw.sb)
     {
-        case SWITCH_UP:
+        case ThreePos::Up:
             pub.shoot_ctrl  = StartMode::On;
             break;
-        case SWITCH_DOWN:
+        case ThreePos::Down:
             pub.reload_ctrl = StartMode::On;
             break;
-        case SWITCH_MID:
+        case ThreePos::Mid:
         default:
             pub.shoot_ctrl  = StartMode::Off;
             pub.reload_ctrl = StartMode::Off;
             break;
     }
 
-    switch (od.sw.sw3)
+    switch (od.sw.sc)
     {
-        case SWITCH_UP:
+        case ThreePos::Up:
             pub.autoaim_ctrl = StartMode::On;
             break;
         default:

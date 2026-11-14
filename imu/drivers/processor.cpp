@@ -7,6 +7,7 @@
  */
 
 #include "processor.hpp"
+#include "log.hpp"
 #include <cstring>
 
 #pragma message "Compiling Modules/Imu/Drivers/Processor"

@@ -94,7 +94,7 @@ public:
 
     void Init(Config cfg);
 
-    void PwrLossCheck();
+    bool PwrLossCheck();
 
     void CanCpltRxCallback(uint8_t* buffer);
 
@@ -124,6 +124,18 @@ public:
     void PackCtrlFrame(uint8_t (&data)[8]);
     void PackCmdFrame (uint8_t (&data)[8], Cmd cmd);
     void PackSetCtrlMode(uint8_t (&data)[8], CtrlModeVal mode);
+
+    /**
+     * @brief 清零多圈计数——SaveZero 后调用，让本地角度与电机内部零点对齐
+     */
+    void ResetEncoder()
+    {
+        pre_encoder_   = 0;
+        total_round_   = 0;
+        total_encoder_ = 0;
+        now_rad_       = 0.0f;
+        now_ang_       = 0.0f;
+    }
 
     // 读取当前状态
     float GetNowRadian()      const { return now_rad_;    }         // 电机轴位置 (rad)
