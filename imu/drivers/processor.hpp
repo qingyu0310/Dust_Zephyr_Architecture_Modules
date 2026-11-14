@@ -25,6 +25,12 @@ public:
 
     void Process(const Sample& sample, topic::imu_to::Message& pub);
 
+    /**
+     * @brief 滤波器内部状态，供诊断
+     * @return EKF 状态引用
+     */
+    const alg::attitude::QuaternionEkf::State& EkfState() const { return ekf_.GetState(); }
+
 private:
     alg::attitude::QuaternionEkf ekf_ {};
 };

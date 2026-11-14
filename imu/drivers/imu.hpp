@@ -12,7 +12,6 @@
 #include "imu_to.hpp"
 #include "quaternion.hpp"
 #include "thread.hpp"
-#include "timer.hpp"
 #include "imu_device_layer.hpp"
 #include "heater.hpp"
 #include "processor.hpp"
@@ -74,6 +73,12 @@ public:
      * @return Heater 引用
      */
     heater::Heater& Heater() { return heater_; }
+
+    /**
+     * @brief EKF 内部状态，供诊断
+     * @return EKF 状态引用
+     */
+    const alg::attitude::QuaternionEkf::State& EkfState() const { return attitude_.EkfState(); }
 
     /**
      * @brief 每拍回调，由用户区设置
