@@ -40,8 +40,9 @@ void Processor::Process(const Sample& sample, topic::imu_to::Message& pub)
 
     const auto& state = ekf_.GetState();
 
-    memcpy(pub.quaternion, state.q,  sizeof(pub.quaternion));
-    memcpy(pub.gyro,       state.w,  sizeof(pub.gyro));
+    memcpy(pub.quaternion, state.q,  	 sizeof(pub.quaternion));
+    memcpy(pub.gyro,       state.w,  	 sizeof(pub.gyro));
+    memcpy(pub.accel,      sample.accel, sizeof(pub.accel));
 
     pub.roll        = state.roll;
     pub.pitch       = state.pitch;

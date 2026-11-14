@@ -40,8 +40,7 @@ class Icm42688p final : public CalibSource
 public:
     Icm42688p()
     {
-        offset_ = reg::kStaticOffset;
-        scale_  = reg::kStaticScale;
+        scale_ = reg::kStaticScale;
     }
 
     bool Init() override;

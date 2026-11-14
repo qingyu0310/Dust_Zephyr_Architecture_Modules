@@ -37,7 +37,7 @@ namespace imu {
  *
  * @param mode ImuStartMode::Normal / AutoCalib / AutoIdent
  */
-bool ImuManager::Init(ImuStartMode mode)
+bool ImuManager::Init(ImuStartMode mode, const ImuOffsetData& offset)
 {
     ready_ = false;
 
@@ -46,6 +46,9 @@ bool ImuManager::Init(ImuStartMode mode)
         return false;
     }
     DUST_LOG_INF("InitSource done");
+
+    // 用户区传入的静态零偏，驱动内部深拷贝
+    source_->SetOffset(offset);
 
     if (!heater_.Init()) {
         DUST_LOG_ERR("heater init failed");

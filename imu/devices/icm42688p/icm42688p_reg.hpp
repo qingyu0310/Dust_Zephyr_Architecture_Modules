@@ -141,18 +141,10 @@ constexpr uint8_t kWristCtrl3           = 0x53;
 constexpr uint8_t kWristCtrl3Default    = 0x93;
 
 /*
- * 静态校准参数默认入口。
- * 如果关闭自动校准，就直接使用这里的 offset/scale。
- * 单位：
- * - gyro_offset: rad/s
- * - accel_offset: m/s^2
- * - gyro_scale/accel_scale: 无量纲比例
+ * 灵敏度比例默认值。
+ * 零偏由 ImuManager::Init 传入，不在芯片头里写死。
+ * 单位：无量纲比例
  */
-static constexpr ::ImuOffsetData kStaticOffset {
-    {  0.009049f,  0.011271f, -0.009992f },
-    { -0.420728f,  0.042918f,  1.061736f }
-};
-
 static constexpr ::ImuScaleData kStaticScale {
     { 1.0f, 1.0f, 1.0f },
     { 1.0f, 1.0f, 1.0f }

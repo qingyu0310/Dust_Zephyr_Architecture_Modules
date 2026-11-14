@@ -30,32 +30,6 @@ struct Sample
 };
 
 /**
- * @brief 具体 IMU 驱动需要实现的统一接口
- */
-class Source
-{
-public:
-    virtual ~Source() = default;
-
-    virtual bool Init() = 0;
-    virtual bool LateInit() = 0;
-    virtual bool Read(Sample& sample) = 0;
-    virtual bool Calibrate() { return true; }
-};
-
-/**
- * @brief 原始 IMU 寄存器样本
- *
- * 统一保存 accel/gyro/temperature 原始计数，供公共后处理流程复用。
- */
-struct ImuRawSample
-{
-    int16_t accel[3] = {0, 0, 0};
-    int16_t gyro [3] = {0, 0, 0};
-    int16_t temp     = 0;
-};
-
-/**
  * @brief IMU 零偏校准参数
  */
 struct ImuOffsetData
@@ -74,6 +48,33 @@ struct ImuScaleData
 };
 
 /**
+ * @brief 具体 IMU 驱动需要实现的统一接口
+ */
+class Source
+{
+public:
+    virtual ~Source() = default;
+
+    virtual bool Init() = 0;
+    virtual bool LateInit() = 0;
+    virtual bool Read(Sample& sample) = 0;
+    virtual bool Calibrate() { return true; }
+    virtual void SetOffset(const ImuOffsetData& offset) { (void)offset; }
+};
+
+/**
+ * @brief 原始 IMU 寄存器样本
+ *
+ * 统一保存 accel/gyro/temperature 原始计数，供公共后处理流程复用。
+ */
+struct ImuRawSample
+{
+    int16_t accel[3] = {0, 0, 0};
+    int16_t gyro [3] = {0, 0, 0};
+    int16_t temp     = 0;
+};
+
+/**
  * @brief 带公共校准与单位换算流程的 IMU 数据源基类
  *
  * 子类只需提供原始样本读取与工程量换算函数，
@@ -82,11 +83,20 @@ struct ImuScaleData
 class CalibSource : public Source
 {
 public:
+    /**
+     * @brief 应用外部零偏，内部深拷贝
+     * @param offset 零偏
+     */
+    void SetOffset(const ImuOffsetData& offset) override
+    {
+        offset_ = offset;
+    }
+
     bool Calibrate() override
     {
-        constexpr uint32_t kCalibPeriodUs   = 1000;
-        constexpr uint32_t kCalibCnt        = 200;
-        constexpr float    kGravity         = 9.807f;
+        constexpr uint32_t kCalibPeriodUs = 1000;
+        constexpr uint32_t kCalibCnt      = 200;
+        constexpr float    kGravity       = 9.807f;
 
         // 忙等直到传感器瞬态稳定，避免上电漂移污染静态均值；不切任务。
         constexpr uint32_t kSettleMs = 50;

@@ -64,18 +64,10 @@ static constexpr uint8_t kGyroInt3PushPullLow   = 0x00;
 static constexpr uint8_t kGyroDrdyInt3          = 0x01;
 
 /*
- * 静态校准参数默认入口。
- * 如果关闭自动校准，就直接使用这里的 offset/scale。
- * 单位：
- * - gyro_offset: rad/s
- * - accel_offset: m/s^2
- * - gyro_scale/accel_scale: 无量纲比例
+ * 灵敏度比例默认值。
+ * 零偏由 ImuManager::Init 传入，不在芯片头里写死。
+ * 单位：无量纲比例
  */
-static constexpr ::ImuOffsetData kStaticOffset {
-    { 0.00508663664f, 0.000101200138f, 0.00114515924f },
-    { -0.000633206335f, 0.000943555031f, -0.128417715f }
-};
-
 static constexpr ::ImuScaleData kStaticScale {
     { 1.0f, 1.0f, 1.0f },
     { 1.0f, 1.0f, 1.0f }

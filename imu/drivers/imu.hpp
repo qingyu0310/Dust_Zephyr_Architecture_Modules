@@ -35,7 +35,13 @@ class ImuManager final
 public:
     static constexpr k_timeout_t kPeriod = K_MSEC(1);   // 采集节拍
 
-    bool Init(ImuStartMode mode = ImuStartMode::Normal);
+    /**
+     * @brief 初始化 IMU 管理器
+     * @param mode   启动模式
+     * @param offset 静态零偏，默认全零
+     * @return true=成功
+     */
+    bool Init(ImuStartMode mode = ImuStartMode::Normal, const ImuOffsetData& offset = {});
 
     bool Start(ThreadPrio prio = ThreadPrio::Normal)
     {

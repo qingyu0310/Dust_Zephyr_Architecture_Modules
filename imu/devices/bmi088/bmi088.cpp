@@ -69,8 +69,7 @@ Bmi088::Bmi088()
     config_.accel = &accel;
     config_.gyro  = &gyro;
 
-    offset_ = reg::kStaticOffset;
-    scale_  = reg::kStaticScale;
+    scale_ = reg::kStaticScale;
 }
 
 /**
