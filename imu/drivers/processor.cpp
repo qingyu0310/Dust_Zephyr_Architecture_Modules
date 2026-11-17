@@ -45,13 +45,6 @@ void Processor::Process(const Sample& sample, topic::imu_to::Message& pub)
     pub.yaw         = state.yaw;
     pub.yaw_total   = state.yaw_sum;
     pub.temperature = sample.temp;
-
-    pub.bg[0]       = state.bg[2];	// yaw 零偏（x/y 零偏由驱动层静态标定，不进状态）
-    pub.chi2        = state.chi2;
-    pub.k_scale     = state.k_scale;
-    pub.w_norm      = state.w_norm;
-    pub.a_norm      = state.a_norm;
-    pub.stable      = state.stable;
 }
 
 } // namespace attitude
